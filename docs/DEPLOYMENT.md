@@ -79,7 +79,7 @@ The unit's optional SDK path is `/opt/iptv-QA/obs-sdk`. The checker allows all C
 
 ### Schedule
 
-Monday, Wednesday and Sunday at **04:00 Abu Dhabi** (`Asia/Dubai`) = 00:00 UTC = 08:00 Beijing. The normal unit specifies UTC explicitly. systemd 219 cannot parse the timezone suffix: only for an `Asia/Shanghai` host, install `systemd/iptv-qa.timer.cst-legacy.example` as `/etc/systemd/system/iptv-qa.timer`. Other legacy host timezones need their own local-time expression. Always verify:
+The example schedule runs Monday, Wednesday and Sunday at **00:00 UTC**. Adjust it to your deployment schedule and timezone. The normal unit specifies UTC explicitly. systemd 219 cannot parse the timezone suffix: only for an `Asia/Shanghai` host, install `systemd/iptv-qa.timer.cst-legacy.example` as `/etc/systemd/system/iptv-qa.timer`. Other legacy host timezones need their own local-time expression. Always verify:
 
 ```bash
 systemctl list-timers iptv-qa.timer --all

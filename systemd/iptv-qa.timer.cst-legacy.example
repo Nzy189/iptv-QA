@@ -1,7 +1,7 @@
 # systemd 219 fallback ONLY for a host configured to Asia/Shanghai.
 # Do not apply on a host in another timezone.
 [Unit]
-Description=IPTV-QA at 04:00 Abu Dhabi (Asia/Shanghai host fallback)
+Description=Scheduled IPTV quality checks (Asia/Shanghai legacy host example)
 
 [Timer]
 OnCalendar=Mon,Wed,Sun *-*-* 08:00:00

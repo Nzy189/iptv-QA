@@ -1,12 +1,9 @@
 {
   "date": "2026-11-16",
-  "test_location": "Abu Dhabi, United Arab Emirates",
-  "timezone": "Asia/Dubai",
   "environment": {
-    "os": "Linux / CentOS 7 compatibility case",
+    "os": "Linux",
     "python": "3.6.8",
-    "ffmpeg": "7.0.2",
-    "vcpus": 4
+    "ffmpeg": "7.0.2"
   },
   "public_project_unit_tests": {
     "total": 62,

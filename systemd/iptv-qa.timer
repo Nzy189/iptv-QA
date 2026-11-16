@@ -1,8 +1,8 @@
 [Unit]
-Description=IPTV-QA on Monday, Wednesday and Sunday at 04:00 Abu Dhabi
+Description=Scheduled IPTV quality checks
 
 [Timer]
-# Modern systemd: UTC midnight = 04:00 Abu Dhabi, 08:00 Beijing.
+# Modern systemd: explicit UTC schedule; adjust for your deployment.
 OnCalendar=Mon,Wed,Sun *-*-* 00:00:00 UTC
 Persistent=true
 AccuracySec=1min

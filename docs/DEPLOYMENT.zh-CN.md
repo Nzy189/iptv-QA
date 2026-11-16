@@ -79,7 +79,7 @@ sudo systemctl start --no-block iptv-qa.service
 
 ### 定时
 
-每周一、周三、周日**阿布扎比凌晨 04:00**，使用 `Asia/Dubai` 时区，即 UTC 00:00、北京 08:00。正常模板明确指定 UTC。systemd 219 不支持时区后缀；仅在宿主机为 `Asia/Shanghai` 时，可将 `systemd/iptv-qa.timer.cst-legacy.example` 安装为 `iptv-qa.timer`。其他旧版宿主时区必须重新换算，部署后检查：
+示例调度为每周一、周三、周日 **UTC 00:00**，可根据部署需求和时区调整。正常模板明确指定 UTC。systemd 219 不支持时区后缀；仅在宿主机为 `Asia/Shanghai` 时，可将 `systemd/iptv-qa.timer.cst-legacy.example` 安装为 `iptv-qa.timer`。其他旧版宿主时区必须重新换算，部署后检查：
 
 ```bash
 systemctl list-timers iptv-qa.timer --all

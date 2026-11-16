@@ -4,7 +4,7 @@
 
 ## Goal
 
-Select sources that produce usable television video from a specific network vantage point, rather than counting HTTP 200 responses or advertised HD labels. The reference viewing/test location is **Abu Dhabi, UAE**. A passing source is evidence of recent server-side checks, not a promise about all receivers.
+Select sources that produce usable television video from a specific network vantage point, rather than counting HTTP 200 responses or advertised HD labels. A passing source is evidence of recent server-side checks, not a promise about all receivers.
 
 ## Pipeline
 

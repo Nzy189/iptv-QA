@@ -23,7 +23,7 @@ flowchart LR
     F --> G[Browser native HLS or hls.js]
 ```
 
-Run only active channels. Share an output when clients watch the same channel, stop idle workers, bound concurrency and segment retention, and give playback priority over batch QA. The current 4-vCPU case has no verified GPU capacity; do not assume NVENC/VAAPI is available or promise multiple realtime 4K transcodes without benchmarking.
+Run only active channels. Share an output when clients watch the same channel, stop idle workers, bound concurrency and segment retention, and give playback priority over batch QA. Benchmark CPU/GPU capacity for the intended deployment; do not assume hardware acceleration or multi-stream realtime 4K transcoding is available.
 
 ## Reuse candidates reviewed on 2026-11-16
 

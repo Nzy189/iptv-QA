@@ -10,3 +10,5 @@
 8. Before publishing, audit only the intended source tree and archive. Exclude private configurations, keys, raw sources, databases, JSONL, generated subscriptions and binary dependencies.
 
 中文：每次先读 `PROGRESS.md`；必要时读被 Git 忽略的 `.local-context.md`。进度必须区分已实现、已验证、待办和已发布。修改后同步更新中英文文档，不影响正在运行的私有部署。
+
+9. Keep public-facing documentation product-oriented. Do not include individual deployment location, hardware profiles or private operational incident logs. Explicitly approved public demo output links may appear in README; raw private subscriptions and credentials must remain excluded.

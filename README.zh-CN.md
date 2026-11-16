@@ -1,87 +1,105 @@
+<div align="center">
+
 # iptv-QA
+
+### 让海量直播源，变成清晰好用的频道订阅。
+
+**真实视频检测 · 自动优选线路 · 多套订阅输出 · 定时持续更新**
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-[项目进度 / Progress](PROGRESS.md) · [网页播放器可行性](docs/WEB_PLAYER_FEASIBILITY.zh-CN.md)
+[![Tests](https://github.com/Nzy189/iptv-QA/actions/workflows/ci.yml/badge.svg)](https://github.com/Nzy189/iptv-QA/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Nzy189/iptv-QA)](https://github.com/Nzy189/iptv-QA/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-通过真实视频解码、间隔复检和历史可靠性，筛选 IPTV 直播源，生成 Top3、Top5、三套单线路订阅及检测页面。**华为 OBS 上传是可选配置，默认关闭。**
+[**Top3 精选订阅**](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_top3.m3u) · [**完整列表 · Top5**](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_ok.m3u) · [**下载 iptv-QA**](https://github.com/Nzy189/iptv-QA/releases/latest)
 
-**测试地点：阿联酋阿布扎比。** 部署案例为 4 vCPU、约 15 GiB 内存、Linux、Python 3.6.8、FFmpeg 7.0.2。测试结果只代表这个网络观察点，不能保证所有运营商、Apple TV 型号和播放器都能播放。新部署建议使用仍受维护的 Linux 和 Python。
+[快速开始](#快速开始) · [订阅与下载](#订阅与下载) · [使用文档](#使用文档) · [项目进度](PROGRESS.md)
 
-## 现有能力
+</div>
 
-- 下载订阅和公开源目录，按地址及请求头去重，合并同名频道。
-- 中文进入主列表；英语单独输出；默认排除其他语言、语言不明及 NSFW 条目。
-- ffprobe 读取媒体信息；电视源必须有真实视频，纯音频和封面图不进入电视列表。
-- 初筛后，每频道先对最多 10 个候选做深检；不足 5 个通过时继续检查剩余候选。
-- 深检同时要求至少 30 秒实际观察和视频时间推进，HLS 长分片会自动延长观察窗口。
-- 检查 HLS 是否继续更新，至少间隔 30 分钟重新连接；两次通过才能发布。
-- 综合起播快慢、重试、历史可靠性、起播耗时档位、分辨率和总检测耗时排序，尽量选择不同主机的备用线路。
-- 本地生成结果与历史网页；可选上传 OBS，不需要云存储也能运行。
-- 服务可独立运行，提供每周一、周三、周日 **阿布扎比 04:00 / UTC 00:00 / 北京 08:00** 的定时配置。
+iptv-QA 将分散的 IPTV 来源汇总、去重、检测和排序，自动生成适合播放器导入的频道订阅。通过真实视频解码、直播更新检查和间隔重连复检，帮助筛掉失效、纯音频和表现不稳定的候选线路。
+
+部署到自己的服务器，把结果导入支持 M3U 的播放器，后续更新交给定时任务。
+
+## 为什么选择 iptv-QA？
+
+| 优势 | 带来的价值 |
+| --- | --- |
+| **真正检查视频** | 实际解码画面、观察视频推进，避免只凭地址能响应就判断可用。 |
+| **频道更整齐，选择更简单** | 合并重复频道，结合起播、当次表现和历史可靠性优选线路。 |
+| **主用与备用一次备齐** | 同时生成 Top3、Top5 和三套单线路列表，方便日常使用与备用切换。 |
+| **电视与广播分开处理** | 过滤明确电台和纯音频电视候选，英语频道独立输出。 |
+| **自动完成日常维护** | 支持定时运行、按主机控制并发、失败重试和发布保护。 |
+| **筛选过程看得见** | 网页和历史报告展示来源贡献、失败原因及结果变化。 |
+| **本地可用，云端可选** | 不依赖对象存储即可运行；需要固定订阅地址时，可配置华为 OBS 自动覆盖上传。 |
+
+## 订阅与下载
+
+### 示例订阅
+
+点击文件下载，或复制链接到支持 M3U 订阅的播放器。
+
+| 订阅 | 适合什么场景 | 文件入口 |
+| --- | --- | --- |
+| **Top3 精选版** | 每频道最多保留 3 条源，列表更精简 | [iptv_top3.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_top3.m3u) |
+| **完整列表 · Top5** | 覆盖全部入选频道，每频道最多保留 5 条源 | [iptv_ok.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_ok.m3u) |
+| **Set 1 主用版** | 每频道只出现一次，优先使用第 1 名 | [iptv_set1.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_set1.m3u) |
+| **Set 2 / Set 3 备用版** | 使用另一套单线路列表，方便整体切换 | [Set 2](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_set2.m3u) · [Set 3](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_set3.m3u) |
+| **英语精选版** | 英语频道单独使用 | [iptv_english.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_english.m3u) |
+| **检测报告** | 查看最近发布结果与历史记录 | [iptv_summary.html](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_summary.html) |
+
+**Top3 和 Top5 覆盖相同的入选频道，区别是每频道保留的线路数量。** 这里的完整列表指 Top5 输出，不是未经检测的原始候选大包。备用不足时，三套单线路订阅复用最后一条可用源。
+
+示例文件由运行实例生成，发布进度以检测报告为准；源码不附带固定频道库。自行部署时，可以使用自己的来源和发布地址。
+
+<details>
+<summary>更多输出及接入说明</summary>
+
+- [CSV 历史](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_history.csv)和 [JSON 历史](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_history.json)可用于分析和程序接入。
+- 本地 Top5 文件名为 `iptv_top5.m3u`，默认公开文件名为 `iptv_ok.m3u`。
+- 不启用 OBS 时，英语结果位于 `data/english/published/iptv_top3.m3u`，网页以 `iptv_english.m3u` 提供。
+- 中英文结果分阶段发布，详细配置见[部署文档](docs/DEPLOYMENT.zh-CN.md)。
+
+</details>
+
+## 它如何工作？
+
+**采集 → 去重 → 探测 → 解码 → 持续观察 → 间隔重连 → 排名 → 发布**
+
+入围候选需要同时满足至少 30 秒视频时间推进和实际观察，再至少间隔 30 分钟，用新连接重新验证；HLS 还会检查播放列表是否持续更新。只有两次深检通过，才有资格进入最终排序。
+
+结果为零或数量异常下降时，发布保护会保留上一版，避免坏结果覆盖已有订阅。完整规则与可调参数见[设计文档](docs/DESIGN.zh-CN.md)。
 
 ## 快速开始
 
-正式运行需要 Linux 的文件锁和原子符号链接。先通过系统包管理器安装 Python 和 FFmpeg：
+**环境要求：** Linux、Python 3、FFmpeg 和 ffprobe；参考媒体工具版本为 FFmpeg 7.x。
 
 ```bash
 git clone https://github.com/Nzy189/iptv-QA.git
 cd iptv-QA
 python3 scripts/configure.py --output config.local.json --data-dir ./data
-python3 iptv_checker.py --config config.local.json --check-config
 python3 daily.py --config config.local.json
 ```
 
-完整流程可能运行数小时。`daily.py` 先同步公开目录，再检测中文，最后处理英文。只检查配置中的订阅时，直接运行 `iptv_checker.py`；添加 `--limit 20` 可做小样本诊断，诊断不会发布文件或更新历史可靠性。
-
-首次检测生成报告后，启动网页：
+第一轮结束后，打开本地结果页面：
 
 ```bash
 python3 web.py --data-dir ./data --host 127.0.0.1 --port 8088
 ```
 
-访问 `http://127.0.0.1:8088/`。未设置 `--public-base` 时，网页读取本地允许的六个订阅文件；设置 `--public-base https://你的公开域名/前缀` 后，订阅入口跳转到该地址。网页当前为中文界面，项目文档提供中英文版本。
+访问 `http://127.0.0.1:8088/`。**OBS 默认关闭**，检测、文件输出和本地页面都能独立使用。接入自己的源、定时任务或云端上传，请查看[部署配置](docs/DEPLOYMENT.zh-CN.md)。
 
-## 输出文件
+## 使用文档
 
-| 文件 | 内容 |
-| --- | --- |
-| `iptv_ok.m3u` | 中文 Top5，每频道最多五条通过验证的源 |
-| `iptv_top3.m3u` | 每频道 Top5 的前三条 |
-| `iptv_set1.m3u` | 每频道一条，使用第 1 名 |
-| `iptv_set2.m3u` | 每频道一条，使用第 2 名 |
-| `iptv_set3.m3u` | 每频道一条，使用第 3 名 |
-| `iptv_english.m3u` | 英语频道，每频道最多三条 |
-| `iptv_summary.html` | 最新汇总和历史记录 |
-| `iptv_history.csv` | 可用表格软件查看的汇总 |
-| `iptv_history.json` | 机器可读的汇总 |
-
-备用不足时，三套单线路文件复用最后一条可用源。中文完成后先发布，英语随后发布；九个远端对象不是一次原子事务。内部 `iptv_top5.m3u` 映射为公开文件名 `iptv_ok.m3u`。不启用 OBS 时，英语结果在 `data/english/published/iptv_top3.m3u`，网页以 `iptv_english.m3u` 提供。
-
-## 配置源与 OBS
-
-修改生成的私有 `config.local.json`。[来源登记表](sources/registry.json)区分现有输入、待测候选和参考工具；不包含个人订阅、服务器地址、桶名或密钥。
-
-OBS 的开关、区域、Endpoint、桶名、前缀、文件名映射、重试次数、缓存头和公开访问地址均可配置。AK/SK 只通过环境变量读取；默认关闭时只输出本地文件。详见[部署文档](docs/DEPLOYMENT.zh-CN.md#可选-obs-上传)。
-
-## 文档
-
-| 内容 | 中文 | English |
+| 了解更多 | 中文 | English |
 | --- | --- | --- |
-| 设计及边界 | [设计思路](docs/DESIGN.zh-CN.md) | [Design](docs/DESIGN.md) |
-| 服务器、定时、OBS | [部署配置](docs/DEPLOYMENT.zh-CN.md) | [Deployment](docs/DEPLOYMENT.md) |
-| 已找到的公开来源 | [来源说明](docs/SOURCES.zh-CN.md) | [Sources](docs/SOURCES.md) |
+| 检测、排序与参数 | [设计思路](docs/DESIGN.zh-CN.md) | [Design](docs/DESIGN.md) |
+| 安装、定时与 OBS | [部署配置](docs/DEPLOYMENT.zh-CN.md) | [Deployment](docs/DEPLOYMENT.md) |
+| 来源发现与登记 | [来源说明](docs/SOURCES.zh-CN.md) | [Sources](docs/SOURCES.md) |
 | 测试与复现 | [测试说明](docs/TESTING.zh-CN.md) | [Testing](docs/TESTING.md) |
+| 网页播放器可行性 | [研究文档](docs/WEB_PLAYER_FEASIBILITY.zh-CN.md) | [Research](docs/WEB_PLAYER_FEASIBILITY.md) |
 
-## 验证与能力边界
+[项目进度](PROGRESS.md) · [后续计划](ROADMAP.md) · [安全说明](SECURITY.md) · [来源清单](sources/registry.json)
 
-```bash
-python3 -m unittest discover -s tests -v
-python3 scripts/validate_media.py --bin-dir /usr/bin
-python3 scripts/validate_quality.py --bin-dir /usr/bin
-python3 scripts/check_publication.py
-```
-
-测试证明程序符合既定规则，不等于实播成功率。起播时间是 FFmpeg 进度采样的上界估计，并非 Apple TV 实际出画面时间。当前深检单独验证视频；音频解码、音画同步、黑屏/冻结、频道内容和终端兼容性尚未完整验证。5/12/30 秒是项目经验参数，不是行业统一标准。详见[设计边界](docs/DESIGN.zh-CN.md#现有边界)。
-
-软件使用 MIT 许可证。上游列表和节目流保持各自条款；仓库提供来源引用和配置，不打包个人订阅或媒体内容。[安全说明](SECURITY.md) · [后续计划](ROADMAP.md)。
+iptv-QA 是筛选和发布工具，实际播放仍取决于上游、网络及接收设备。能力边界见[设计文档](docs/DESIGN.zh-CN.md#现有边界)。软件使用 [MIT 许可证](LICENSE)，上游列表与媒体流保留各自条款。

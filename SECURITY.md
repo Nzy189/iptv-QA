@@ -1,6 +1,6 @@
 # Security / 安全说明
 
-Keep subscriptions, AK/SK, server credentials, database files and raw check logs outside Git. Use the ignored local configuration or `/etc/iptv-qa`, with restricted permissions. The release package includes no personal credentials, server IP, bucket or generated subscriptions.
+Keep subscriptions, AK/SK, server credentials, database files and raw check logs outside Git. Use the ignored local configuration or `/etc/iptv-qa`, with restricted permissions. Private credentials, server access details and generated subscriptions are not stored in Git. The README may link explicitly published demo outputs, which are hosted separately from the source package.
 
 The checker makes network requests to configured sources and their media references. Treat untrusted subscriptions as untrusted network input; do not expose a remote configuration/upload API or run arbitrary code from source repositories. Literal private/multicast addresses can be skipped, but this is not a complete SSRF boundary against redirects or DNS changes.
 

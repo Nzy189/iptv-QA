@@ -2,7 +2,7 @@
 
 [English](SOURCES.md) | [简体中文](SOURCES.zh-CN.md) · [首页](../README.zh-CN.md)
 
-机器可读登记表为 [sources/registry.json](../sources/registry.json)。登记只代表找到入口，不代表每条流都能播放。测试场景：阿联酋阿布扎比；资料核对日期：2026-11-16。
+机器可读登记表为 [sources/registry.json](../sources/registry.json)。登记只代表找到入口，不代表每条流都能播放。资料核对日期：2026-11-16。
 
 | 来源 | 状态 | 用法 |
 | --- | --- | --- |

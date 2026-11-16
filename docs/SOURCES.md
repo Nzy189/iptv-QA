@@ -2,7 +2,7 @@
 
 [English](SOURCES.md) | [简体中文](SOURCES.zh-CN.md) · [Home](../README.md)
 
-The machine-readable inventory is [sources/registry.json](../sources/registry.json). It records references, not a guarantee that any stream is playable. Test context: Abu Dhabi, UAE; reviewed on 2026-11-16.
+The machine-readable inventory is [sources/registry.json](../sources/registry.json). It records references, not a guarantee that any stream is playable. References reviewed on 2026-11-16.
 
 | Input | Status | How it is used |
 | --- | --- | --- |

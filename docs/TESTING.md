@@ -17,15 +17,13 @@ Use `--bin-dir DIRECTORY` or `IPTV_FFMPEG_DIR` for static binaries. Core tests u
 
 ## Test environment
 
-Reference location: **Abu Dhabi, United Arab Emirates**. Deployment case: 4 vCPUs, approximately 15 GiB RAM, Linux/CentOS 7, Python 3.6.8, FFmpeg/ffprobe 7.0.2. New installations should not adopt an obsolete OS just to reproduce the case. Modern Python versions are covered by the included GitHub Actions matrix; a configured workflow is not evidence that a particular remote CI run has already passed.
+Automated validation runs on Linux with Python 3.10, 3.12 and 3.14 in GitHub Actions. Real-media fixtures run on Python 3.12, and compatibility checks also cover Python 3.6.8 with FFmpeg 7.0.2. Use maintained OS/Python releases for new deployments. See [validation evidence](VALIDATION.json) for the verified run.
 
 Before public-project extraction, the deployed checker passed 57 Linux regression tests. Public-project changes add tests for optional OBS configuration, local playlist serving and radio classification. See [PROGRESS](../PROGRESS.md) for the actual most recent test count and release verification rather than treating this historical count as current.
 
-## Field observations and interpretation
+## Regression coverage
 
-An intentionally selected sample of 16 former Top1 entries included known audio-only candidates and multiple codecs. Four returned audio only and one had a media-reading error; four selected video sources passed a 30-second observation after correcting the buffer-gap heuristic. Two HLS sources were separately observed advancing their playlists. This was a diagnostic sample, **not a random accuracy benchmark**.
-
-The original published set1 contained 495 audio-only first choices among 1579 channels. The server file's raw position 1094 did not match the user's displayed radio boundary; client grouping/order can differ. The defect was media policy accepting audio, not a meaningful numeric channel cutoff. A currently running new checker and a previously published file are separate states; do not claim the old OBS file has been fixed just because new code exists.
+Regression tests cover audio-only rejection, explicit radio entries even when they contain encoded video, valid TV-name exceptions, stalled or stale HLS, reconnect failure, publication guards and local-only operation. This tests policy behavior with controlled inputs; it is not a random sample of public channels or a playback-accuracy benchmark.
 
 ## Limits of verification
 

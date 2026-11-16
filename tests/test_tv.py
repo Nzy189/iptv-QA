@@ -288,7 +288,7 @@ class TVServiceTests(unittest.TestCase):
             'http://127.0.0.1:%d/two/master.m3u8\n'
             '#EXTINF:-1 group-title="Test",频道三\n'
             'http://127.0.0.1:%d/one/master.m3u8\n' % (port, port, port), encoding='utf-8')
-        cls.plugin = tv.TVPlugin(cls.PASSWORD, Path(__file__).resolve().parent.parent / 'webtv',
+        cls.plugin = tv.TVPlugin(cls.PASSWORD, tv.assets_dir(),
                                  cls.PLAYLISTS, '')
         cls.server = web.Server(('127.0.0.1', 0), web.make_handler(cls.data, '', cls.plugin))
         cls.thread = threading.Thread(target=cls.server.serve_forever)
@@ -299,6 +299,7 @@ class TVServiceTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.server.shutdown()
         cls.server.server_close()
+        cls.plugin.close()
         cls.upstream.shutdown()
         cls.upstream.server_close()
         cls.temp.cleanup()

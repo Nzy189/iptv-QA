@@ -1,7 +1,7 @@
 # Working on iptv-QA
 
 1. Read `PROGRESS.md` first. It is the continuation checklist and records what is implemented, verified, pending and published.
-2. Read `docs/DESIGN.md` / `docs/DESIGN.zh-CN.md` before changing detection rules. Read `docs/DEPLOYMENT.md` before changing scheduling or OBS behavior.
+2. Read `docs/ARCHITECTURE.md` / `docs/ARCHITECTURE.zh-CN.md` for module boundaries and `docs/PLAYBACK.md` for player work. Read `docs/DESIGN.md` / `docs/DESIGN.zh-CN.md` before changing detection rules. Read `docs/DEPLOYMENT.md` before changing scheduling or OBS behavior.
 3. If present, `.local-context.md` contains private operational paths for this checkout. It is ignored by Git. Never copy its contents, credentials, actual subscriptions or runtime playlists into a public commit.
 4. Update `PROGRESS.md` after meaningful work and before handoff. State actual evidence and commands; mark plans separately from released capabilities. Do not claim a release, push, OBS update or full validation until verified.
 5. Preserve the existing production checker while testing a new release in an isolated directory. A public repository update does not automatically deploy to a running server.

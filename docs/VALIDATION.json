@@ -38,5 +38,26 @@
     ],
     "tested_commit": "dcdc7b3ec221b86501f728d836192b25b18a467c",
     "real_media_python": "3.12"
+  },
+  "modular_refactor": {
+    "date": "2026-11-16",
+    "branch": "refactor/modular-architecture",
+    "windows_unit_http": {
+      "total": 91,
+      "passed": 82,
+      "skipped_linux_only": 9
+    },
+    "wheel_isolation_and_assets": true,
+    "production_deployed": false,
+    "linux_unit_http": {"python": "3.6.8", "total": 91, "passed": 91, "skipped": 0},
+    "linux_ffmpeg_fixtures": {"ffmpeg": "7.0.2", "publication": true, "quality": true},
+    "github_ci": {
+      "tested_commit": "3a7b104d11392e4fd86ad707ec1f536e53a9be5f",
+      "conclusion": "success",
+      "python_versions": ["3.10", "3.12", "3.14"],
+      "real_media_and_wheel_python": "3.12",
+      "push_run": "https://github.com/Nzy189/iptv-QA/actions/runs/43902507773",
+      "pr_run": "https://github.com/Nzy189/iptv-QA/actions/runs/43902676826"
+    }
   }
 }

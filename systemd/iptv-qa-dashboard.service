@@ -1,0 +1,24 @@
+[Unit]
+Description=Standalone IPTV reporting dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=iptv-qa
+Group=iptv-qa
+WorkingDirectory=/opt/iptv-QA
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONIOENCODING=utf-8
+ExecStart=/usr/bin/python3 -m iptv_qa dashboard --host 127.0.0.1 --port 8088 --data-dir /var/lib/iptv-qa
+Restart=on-failure
+RestartSec=5s
+CPUQuota=25%
+MemoryLimit=128M
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadOnlyDirectories=/var/lib/iptv-qa
+
+[Install]
+WantedBy=multi-user.target

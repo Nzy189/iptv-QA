@@ -2,6 +2,31 @@
 
 [English](DEPLOYMENT.md) | [简体中文](DEPLOYMENT.zh-CN.md) · [Home](../README.md)
 
+## Independent modules
+
+Deploy the entire `iptv_qa/` package, including `playback/assets/`, rather than copying only the old root scripts. Run from the checkout or install with `python3 -m pip install .`. Legacy entry points remain compatible; new commands state which feature runs.
+
+```bash
+python3 -m iptv_qa catalog --config config.local.json
+python3 -m iptv_qa check --config config.local.json
+python3 -m iptv_qa publish --config config.local.json
+python3 -m iptv_qa report --data-dir ./data
+python3 -m iptv_qa dashboard --data-dir ./data --port 8088
+# Set IPTV_TV_PASSWORD in the private service environment first
+python3 -m iptv_qa play --data-dir ./data --port 8089
+# Or host both interfaces on one port
+python3 -m iptv_qa serve --data-dir ./data --port 8088
+```
+
+`catalog` only discovers candidates; `check` checks configured sources with configured publication; `run` orchestrates discovery plus Chinese/English QA. `publish` retries an existing validated export without source fetching or rechecking; add `--scope english` for English only. `report` requires neither source configuration nor media tools. Disabled OBS returns a not-configured status.
+
+Choose either the existing combined `iptv-qa-web.service` on 8088, or `iptv-qa-dashboard.service` on 8088 plus `iptv-qa-player.service` on 8089. Do not enable both combined and dashboard units on the same port. Standalone playback also accepts external lists without local QA data. Player defaults are two transcodes and 90-second idle cleanup; its service template does not inherit the dashboard's low CPU quota.
+
+The password belongs in private `tv.env` (see `config/tv.env.example`), outside Git. Select FFmpeg using `IPTV_TV_FFMPEG` or `--ffmpeg`. `dashboard` never loads playback; `serve` without a password serves reports only; `play` refuses startup without a password. Dashboard routes do not inherit player authentication. See [playback](PLAYBACK.md) for behavior and access boundaries.
+
+These are source and service-template changes, not an automatic restart of an existing deployment. Validate upgrades in an isolated directory before selecting the service mode, ports and environment.
+
+
 ## Source checkout and prerequisites
 
 Use Linux, Python 3 and FFmpeg/ffprobe. FFmpeg 7.x is the reference version; the video pipeline needs `-fps_mode` support. Core checking uses only Python's standard library. Python 3.6.8 was tested for compatibility with the original server; maintained Python/Linux versions are recommended for new installations.
@@ -9,7 +34,7 @@ Use Linux, Python 3 and FFmpeg/ffprobe. FFmpeg 7.x is the reference version; the
 ```bash
 python3 scripts/configure.py --output config.local.json --data-dir ./data
 python3 iptv_checker.py --config config.local.json --check-config
-python3 daily.py --config config.local.json
+python3 -m iptv_qa run --config config.local.json
 ```
 
 `configure.py --source URL` can replace the default direct subscription; repeat it for multiple subscriptions. The catalogue source is still appended for the full pipeline. Edit `ffmpeg` and `ffprobe` paths if using static binaries. `catalog.archive_url`, `catalog.metadata_url` and `catalog.playlist_urls` control discovery. Add the Free-TV candidate to `catalog.playlist_urls` only when intentionally evaluating it.
@@ -100,21 +125,3 @@ sudo systemctl start iptv-qa-sets.service     # split current Top5 without reche
 ```
 
 Detailed runs default to 14 days of retention, while the current publication and SQLite summaries persist. Back up private config and data independently. Read [PROGRESS](../PROGRESS.md) before upgrading a running deployment.
-
-## Web TV player
-
-The dashboard ships a password-gated web TV player at `/tv/`: after loading a playlist it offers a channel list with search, previous/next/random switching, remote-style number entry, fullscreen and a mobile layout. The source bar offers the published subscriptions shown on the dashboard (Set1/Set2/Set3/Top3) as one-click presets, and accepts any custom m3u URL.
-
-When a channel fails, the player automatically walks the backup sets **Set1 -> Set2 -> Set3** (the three sets share channel names and order; a source is recognised by the file name at the end of its URL). A mode switch next to the random button selects the failure policy: **normal mode** shows an error after every set failed, while **enhanced mode** additionally moves to the next set after 10 seconds without data and, once all sets failed, keeps zapping to random channels and retrying the whole chain (up to 15 times) until something plays.
-
-The server fetches playlists and proxies HLS manifests, segments, keys and audio tracks same-origin (honouring per-channel `User-Agent`/`Referer` options); browsers play through the vendored hls.js. **No transcoding by default**: only when the browser cannot decode the codec or a channel plays audio without video does the frontend request an on-demand server transcode (FFmpeg to H.264/AAC, capped at 720p/2 Mbps); at most 2 concurrent transcodes, idle ones stop after 90 seconds. Audio-only channels show an explicit "sound without picture" notice.
-
-Set the access password (the player stays disabled without it):
-
-```bash
-sudo install -m 0600 config/tv.env.example /etc/iptv-qa/tv.env
-# Edit the file: set IPTV_TV_PASSWORD to the real password; optionally point IPTV_TV_FFMPEG at an ffmpeg binary for transcoding.
-sudo systemctl restart iptv-qa-web.service
-```
-
-Security boundaries: wrong passwords are delayed by one second and answered with 401; the session cookie is HttpOnly with SameSite=Strict and dies on service restart; the proxy only forwards addresses discovered inside loaded playlists and cannot be used as an open proxy; cloud metadata addresses are refused. Do not share the password; restrict source IPs with a firewall in production.

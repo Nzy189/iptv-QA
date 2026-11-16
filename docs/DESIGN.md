@@ -2,6 +2,8 @@
 
 [English](DESIGN.md) | [简体中文](DESIGN.zh-CN.md) · [Home](../README.md)
 
+This page covers the **quality-checking engine**. See [architecture](ARCHITECTURE.md) for module boundaries and [playback](PLAYBACK.md) for browser delivery/transcoding. The package refactor preserves the detection policy below.
+
 ## Goal
 
 Select sources that produce usable television video from a specific network vantage point, rather than counting HTTP 200 responses or advertised HD labels. A passing source is evidence of recent server-side checks, not a promise about all receivers.

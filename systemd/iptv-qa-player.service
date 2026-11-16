@@ -1,0 +1,25 @@
+[Unit]
+Description=Standalone IPTV browser player and media gateway
+After=network.target
+
+[Service]
+Type=simple
+User=iptv-qa
+Group=iptv-qa
+WorkingDirectory=/opt/iptv-QA
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONIOENCODING=utf-8
+EnvironmentFile=-/etc/iptv-qa/tv.env
+ExecStart=/usr/bin/python3 -m iptv_qa play --host 127.0.0.1 --port 8089 --data-dir /var/lib/iptv-qa
+Restart=on-failure
+RestartSec=5s
+KillMode=control-group
+MemoryLimit=2G
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+ReadOnlyDirectories=/var/lib/iptv-qa
+
+[Install]
+WantedBy=multi-user.target

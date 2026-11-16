@@ -5,3 +5,4 @@ recursive-include sources *.json
 recursive-include scripts *.py
 recursive-include systemd *.service *.timer *.example
 recursive-include tests *.py
+recursive-include iptv_qa *.py *.html *.js *.css *.txt

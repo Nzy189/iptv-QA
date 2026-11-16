@@ -1,51 +1,35 @@
 # Project progress / 项目进度
 
-**Last updated / 最后更新：2026-11-16。** Read this file first when continuing. / 每次续接先读本文件。
+**Updated / 更新：2026-11-16。Read this first / 每次续接先读本文件。** Private installation details belong in ignored `.local-context.md`.
 
-Live progress: [main/PROGRESS.md](https://github.com/Nzy189/iptv-QA/blob/main/PROGRESS.md). Release archives preserve their build-time snapshot. / 最新状态以 main 为准，版本压缩包保留打包时快照。
+## Current work / 当前工作
 
-## Publication / 发布状态
+Branch: `refactor/modular-architecture`, based on `5d38c3c`. The previous v0.1.0 release remains unchanged. This branch is a modular source refactor, not an automatic production upgrade.
 
-- **Published / 已发布：v0.1.0** — [Repository](https://github.com/Nzy189/iptv-QA) · [Release and downloads](https://github.com/Nzy189/iptv-QA/releases/tag/v0.1.0).
-- Release target: `7cac47518367c59f685a6211431efe89ddd37c9a`. ZIP and SHA256SUMS were uploaded, downloaded again and verified; the checksum file was also checked on Linux.
-- Public project has been verified independently of production deployments. Pushing this repository does not install changes into a running service.
+Review / 审阅：[PR #1](https://github.com/Nzy189/iptv-QA/pull/1). Implementation tested at `3a7b104`; subsequent progress/documentation updates do not change runtime behavior.
 
-## Latest work / 最近完成
+- Implemented / 已实现：package `iptv_qa/` separates catalogue, detection, publishing, reporting and playback; shared parsing/I/O/locks are in `common`; HTTP hosting and scheduled orchestration are separate layers.
+- Independent commands / 独立命令：`python3 -m iptv_qa {catalog,check,publish,report,dashboard,play,serve,run}`. Playback needs no detector/config/OBS; report regeneration needs no media tools; upload retries need no new QA run.
+- Compatibility / 兼容：seven old root modules remain shims. Existing QA policy, playlist names, player URLs and frontend behaviors are preserved. `check` retains integrated optional publication.
+- Playback / 放映：proxy, sessions/registry, transcoding and service are split; assets are packaged. Standalone player mode, adjustable transcode concurrency/idle limits and shutdown cleanup added. Combined or separate HTTP service templates are available.
+- Documentation / 文档：paired architecture and playback guides; README presents the major modules; detection/deployment guides are targeted; research is marked historical and roadmap contradictions removed.
 
-- **Web TV player implemented and deployed / 网页电视播放器已实现并部署**：`tv.py` + `webtv/`（内置 hls.js 1.7.4）挂载进仪表盘同进程，`/tv/` 密码门禁。功能：频道列表/搜索/上一台/下一台/随机/遥控器式台号输入/全屏/手机布局；源选择栏一键加载本页发布的 Set1/Set2/Set3/Top3，也可粘贴任意 m3u 链接；频道失败自动按 Set1→Set2→Set3 换备用源，增强模式（随机按钮旁开关）10 秒无数据换套、全失败后随机跳台重试至可播（上限 15 次）。
-- 同源 HLS 代理（清单/分片/密钥/音轨全部改写，保留每频道 UA/Referer，仅代理已加载清单中的地址）；浏览器解不了编码或"有声音无画面"时自动按需 FFmpeg 转码（H.264/AAC、封顶 720p/2Mbps、最多 2 路、闲置 90 秒停止、`-nostdin` 修复了 stdin EOF 导致的转码进程自杀）；纯音频频道明确提示。备用链路按订阅链接末段文件名识别三套对齐清单。
-- 部署在生产面板 8088 端口（`/opt/iptv-checker`，密码经 `/etc/iptv-checker/tv.env`，不进仓库）；生产 `web.py` 已与公开版统一（单元文件显式传参，旧文件备份为 `web.py.before-tv`）。转码用 `/opt/iptv-checker/bin/ffmpeg`。
-- Redesigned both homepages as product introductions: clear value proposition, feature benefits, direct Top3/Top5 subscription links, backup sets, reports, quick start and documentation.
-- 首页提供可点击的示例输出。完整列表明确为 Top5，与 Top3 覆盖相同入选频道；原始未检测输入不作为精选文件展示。
-- Public documentation now describes the product without an individual deployment location, hardware profile or incident diary. Owner-specific operational details stay in ignored `.local-context.md`.
-- 示例公开输出链接经 HTTP 检查可访问；中英文首页均通过 GitHub Markdown 实际渲染检查和文档链接检查。这不代表重新完成了频道实播验证。
-- Documentation-only product presentation update; detection rules and existing deployed services are unchanged. The immutable v0.1.0 archive remains its original release snapshot.
+## Verification / 验证证据
 
-## Verified capabilities / 已实现与验证
+- Baseline before refactor: 81 unit/HTTP tests; Windows skipped 9 Linux-only cases.
+- Refactor: 91 unit/HTTP tests; Windows passed 82 and skipped the same 9 Linux-only cases. Added tests cover import boundaries, independent commands, locks, standalone HTTP routing and player cleanup.
+- Linux compatibility: all 91 tests passed with Python 3.6.8 in an isolated source directory. FFmpeg 7.0.2 fixtures passed Top3/Top5 publication, zero-result retention, audio-only rejection, radio exclusion and two-connection publication.
+- Wheel built successfully; isolated extraction validates legacy imports, player assets and standalone CLI without importing the detector for playback. This validates packaging, not real upstream playback quality.
+- GitHub CI passed on Python 3.10, 3.12 and 3.14, including real media and wheel isolation on 3.12: [push run](https://github.com/Nzy189/iptv-QA/actions/runs/43902507773), [PR run](https://github.com/Nzy189/iptv-QA/actions/runs/43902676826). Local publication audit passed with zero detected secrets and zero broken document links.
+- Existing release/media evidence is retained in `docs/VALIDATION.json`; this branch's checks are recorded separately. No production services were replaced or restarted.
 
-| Area / 事项 | Evidence / 证据 |
-| --- | --- |
-| QA and radio exclusion | 62 Linux tests; real HLS/audio-only fixtures; encoded-cover radio exclusion |
-| Publication | Top3/Top5 and sets, reconnect validation, zero-result retention, local dashboard |
-| Optional OBS | Configurable region/endpoint, retry/cache behavior; no credentials required for local use |
-| CI | [Run 43849545891](https://github.com/Nzy189/iptv-QA/actions/runs/43849545891) passed on Python 3.10, 3.12 and 3.14; real media on 3.12 |
-| Web TV player | 79 tests pass on Windows and ECS (17 player tests: auth, proxy rewriting, registry, playlists API, transcode flow); real playback verified externally — 720p/1080p channels play, transcoded output is H.264/AAC, transcode process stays alive after `-nostdin` fix |
-| Documentation | Paired README/design/deployment/source/testing/research pages; language switching |
+## Continue here / 后续接续
 
-## Continuation / 下次继续
+1. Read this file, then [architecture](docs/ARCHITECTURE.md) / [中文架构](docs/ARCHITECTURE.zh-CN.md). For private installations, read `.local-context.md` and check live state before operational claims.
+2. New feature code belongs in its `iptv_qa/` module; keep root compatibility shims. QA rule changes require paired DESIGN updates; playback changes require paired PLAYBACK updates.
+3. Run `python3 -m unittest discover -s tests -v`, real media/quality scripts on Linux, `python3 scripts/check_publication.py`, and wheel validation. Do not conflate test fixtures with receiver success rates.
+4. Before upgrading production, use an isolated checkout. Select combined HTTP or split dashboard/player services; deploy the full package including assets. Never copy private sources, credentials or runtime data into public commits.
 
-1. Read this progress file; for a specific installation, read its ignored `.local-context.md` and check live status before making operational claims.
-2. For runtime changes, read the design and deployment documents, run the relevant Linux/media tests, then update evidence. For documentation changes, run `python3 scripts/check_publication.py`; pure documentation pushes skip media CI.
-3. Keep both homepages synchronized. Put benefits and useful outputs first; technical detail belongs in the linked guides. Do not expose private input configurations or credentials. Explicitly published demo download links are allowed.
-4. Update this file after meaningful work. Record repository/release targets only after verification; never equate new source code with a completed production publication.
+## Remaining product work / 后续能力
 
-## Next priorities / 后续重点
-
-- Independent audio/video validation, A/V synchronization and receiver compatibility.
-- Longer checks for frequently watched Top1 sources and labelled playback comparisons.
-- Black/freeze/silence flags and confidence-aware historical ranking.
-- 播放器后续可选：会话跨服务重启保持（当前重启需重新输密码）；转码档位/并发按实测调整。原始可行性研究：[English](docs/WEB_PLAYER_FEASIBILITY.md) · [中文](docs/WEB_PLAYER_FEASIBILITY.zh-CN.md)。
-
-## Capability boundary / 能力边界
-
-Deep checks currently validate video only. Startup/stall measurements are server-side estimates; 5/12/30-second defaults are project heuristics. Tests do not establish a receiver playback-success percentage. See the design documents and roadmap.
+Separate audio/video QA, A/V synchronization, black/freeze/silence review, receiver comparisons and longer frequently watched Top1 checks remain plans. The browser player is already implemented; restart persistence and further compatibility improvements remain optional work. See [roadmap](ROADMAP.md).

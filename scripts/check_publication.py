@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
-IGNORED = {'.git', '__pycache__', '.venv', 'venv', 'data', 'build', 'dist', '.pytest_cache'}
+IGNORED = {'.git', '__pycache__', '.venv', 'venv', 'data', 'build', 'dist', '.pytest_cache', '.claude'}
 PRIVATE_NAMES = {'config.json', 'config.local.json', 'obs.env', '.env'}
 PATTERNS = (
     re.compile(r'-{5}BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-{5}'),

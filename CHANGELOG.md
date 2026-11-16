@@ -1,5 +1,12 @@
 # Changelog / 变更记录
 
+## Unreleased — modular architecture / 模块化架构
+
+- Separate catalogue, detection, optional OBS publishing, reporting and browser playback under `iptv_qa/`; preserve legacy imports and commands.
+- Add independent CLI modes and split HTTP service templates; make player shutdown and transcode limits explicit.
+- Include browser assets in wheels; add module-boundary and isolated-package validation.
+- Reorganize bilingual documentation around product capabilities, architecture and implemented playback.
+
 ## Unreleased — web TV player / 网页电视播放器
 
 - Added a password-gated web TV player at `/tv/` inside the dashboard service: channel list with search, previous/next/random switching, remote-style number entry, fullscreen and mobile layout.

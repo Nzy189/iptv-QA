@@ -1,0 +1,29 @@
+[Unit]
+Description=IPTV video quality validation and top 3 / top 5 playlists
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=iptv-qa
+Group=iptv-qa
+WorkingDirectory=/opt/iptv-QA
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONIOENCODING=utf-8
+Environment=PYTHONPATH=/opt/iptv-QA/obs-sdk
+EnvironmentFile=-/etc/iptv-qa/obs.env
+ExecStart=/usr/bin/python3 /opt/iptv-QA/daily.py --config /etc/iptv-qa/config.json
+# systemd 219 uses zero to disable the oneshot startup timeout.
+TimeoutStartSec=0
+TimeoutStopSec=30s
+KillMode=control-group
+CPUAccounting=yes
+MemoryAccounting=yes
+MemoryLimit=12G
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes
+StandardOutput=journal
+StandardError=journal

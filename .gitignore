@@ -1,0 +1,41 @@
+# Private configuration and credentials
+config.json
+config.local.json
+config.*.local.json
+obs.env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.csv
+!docs/*.example.csv
+
+# Runtime source data, subscriptions, credentials and reports
+data/
+runs/
+published/
+catalog/
+catalog-cache/
+summaries/
+*.m3u
+*.m3u8
+*.jsonl
+*.sqlite3*
+*.log
+*.tar.gz
+.private-gh/
+.local-context.md
+
+# Build/editor files
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.DS_Store
+.idea/
+.vscode/

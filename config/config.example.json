@@ -1,0 +1,75 @@
+{
+  "sources": [
+    {
+      "name": "public",
+      "url": "https://live.zbds.top/tv/iptv4.m3u"
+    },
+    {
+      "name": "tvlist_zh",
+      "url": "file:///var/lib/iptv-qa/catalog/zh.m3u",
+      "optional": true,
+      "catalog": true
+    }
+  ],
+  "data_dir": "/var/lib/iptv-qa",
+  "language_scope": "zh",
+  "language_metadata_path": "/var/lib/iptv-qa/catalog-cache/language-metadata.json",
+  "skip_unroutable": true,
+  "ipv6_available": false,
+  "ffmpeg": "/usr/bin/ffmpeg",
+  "ffprobe": "/usr/bin/ffprobe",
+  "probe_workers": 32,
+  "probe_per_host": 3,
+  "probe_retry_workers": 16,
+  "probe_retry_per_host": 1,
+  "decode_workers": 6,
+  "decode_per_host": 2,
+  "decode_retry_workers": 4,
+  "decode_retry_per_host": 1,
+  "dead_host_retry_sample": 2,
+  "io_timeout": 10,
+  "probe_timeout": 25,
+  "decode_timeout": 40,
+  "decode_seconds": 4,
+  "require_video": true,
+  "video_quality_enabled": true,
+  "deep_validation_enabled": true,
+  "deep_candidates_per_channel": 10,
+  "deep_seconds": 30,
+  "deep_timeout": 90,
+  "deep_workers": 6,
+  "deep_per_host": 1,
+  "fast_startup_seconds": 5,
+  "max_startup_seconds": 12,
+  "max_stall_seconds": 8,
+  "recheck_interval_seconds": 1800,
+  "download_timeout": 40,
+  "minimum_publish_ratio": 0.5,
+  "retention_days": 14,
+  "epg_url": "",
+  "obs": {
+    "enabled": false,
+    "endpoint": "",
+    "bucket": "YOUR_BUCKET_NAME",
+    "prefix": "iptv",
+    "upload_report": false,
+    "publish_sets": true,
+    "object_names": {
+      "iptv_top5.m3u": "iptv_ok.m3u",
+      "iptv_top3.m3u": "iptv_top3.m3u"
+    },
+    "region": "me-east-1",
+    "cache_control": "max-age=300",
+    "upload_retries": 3,
+    "public_base_url": ""
+  },
+  "catalog": {
+    "repository_name": "imDazui/Tvlist-awesome-m3u-m3u8",
+    "archive_url": "https://codeload.github.com/imDazui/Tvlist-awesome-m3u-m3u8/tar.gz/refs/heads/master",
+    "metadata_url": "https://iptv-org.github.io/api/channels.json",
+    "playlist_urls": [
+      "https://iptv-org.github.io/iptv/index.m3u"
+    ]
+  },
+  "exclude_radio": true
+}

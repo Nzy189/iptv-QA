@@ -1,0 +1,12 @@
+[Unit]
+Description=IPTV-QA on Monday, Wednesday and Sunday at 04:00 Abu Dhabi
+
+[Timer]
+# Modern systemd: UTC midnight = 04:00 Abu Dhabi, 08:00 Beijing.
+OnCalendar=Mon,Wed,Sun *-*-* 00:00:00 UTC
+Persistent=true
+AccuracySec=1min
+Unit=iptv-qa.service
+
+[Install]
+WantedBy=timers.target

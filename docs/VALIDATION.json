@@ -1,0 +1,11 @@
+{
+  "date": "2026-11-16",
+  "test_location": "Abu Dhabi, United Arab Emirates",
+  "timezone": "Asia/Dubai",
+  "environment": {"os": "Linux / CentOS 7 compatibility case", "python": "3.6.8", "ffmpeg": "7.0.2", "vcpus": 4},
+  "public_project_unit_tests": {"total": 62, "passed": 62, "skipped": 0},
+  "real_media": {"top5_top3_publication": true, "zero_result_retains_previous": true},
+  "real_quality": {"audio_only_rejected": true, "radio_with_video_excluded": true, "hls_advances": true, "wall_clock_observation": true, "two_connection_publication": true},
+  "publication_audit": {"passed": true, "detected_secrets": 0, "broken_local_document_links": 0},
+  "interpretation": "Reproducible implementation tests, not a receiver playback-accuracy percentage. Production observation defaults are longer than the test fixtures."
+}

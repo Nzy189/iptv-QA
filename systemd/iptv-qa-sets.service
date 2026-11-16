@@ -1,0 +1,21 @@
+[Unit]
+Description=Generate three IPTV sets from the current validated publication
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=iptv-qa
+Group=iptv-qa
+WorkingDirectory=/opt/iptv-QA
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONIOENCODING=utf-8
+Environment=PYTHONPATH=/opt/iptv-QA/obs-sdk
+EnvironmentFile=-/etc/iptv-qa/obs.env
+ExecStart=/usr/bin/python3 /opt/iptv-QA/iptv_checker.py --config /etc/iptv-qa/config.json --generate-sets
+TimeoutStartSec=10min
+UMask=0077
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full
+ProtectHome=yes

@@ -1,0 +1,7 @@
+include LICENSE README.md README.zh-CN.md requirements-obs.txt
+recursive-include config *.json *.example
+recursive-include docs *.md *.json
+recursive-include sources *.json
+recursive-include scripts *.py
+recursive-include systemd *.service *.timer *.example
+recursive-include tests *.py

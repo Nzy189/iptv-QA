@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "reviewed_on": "2026-11-16",
+  "test_location": "Abu Dhabi, United Arab Emirates",
+  "timezone": "Asia/Dubai",
+  "sources": [
+    {"id":"zbds-public","kind":"playlist","status":"configured_input","url":"https://live.zbds.top/tv/iptv4.m3u","note":"Public input; every stream still needs validation."},
+    {"id":"tvlist-awesome","kind":"repository_archive","status":"configured_input","url":"https://github.com/imDazui/Tvlist-awesome-m3u-m3u8","download_url":"https://codeload.github.com/imDazui/Tvlist-awesome-m3u-m3u8/tar.gz/refs/heads/master","note":"Reads playlist text from archive members without extracting or executing repository files."},
+    {"id":"iptv-org-index","kind":"playlist","status":"configured_input","url":"https://iptv-org.github.io/iptv/index.m3u","repository":"https://github.com/iptv-org/iptv","note":"Normal global index; country/language lists can overlap with this input."},
+    {"id":"iptv-org-metadata","kind":"metadata","status":"configured_input","url":"https://iptv-org.github.io/api/channels.json","note":"Channel IDs, countries and labels support heuristic routing; not proof of spoken language."},
+    {"id":"free-tv","kind":"playlist","status":"candidate_not_stream_tested","url":"https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8","repository":"https://github.com/Free-TV/IPTV","note":"Discovered candidate. Not enabled by default or claimed to improve any channel yet."},
+    {"id":"cgtn-official","kind":"official_live_page","status":"candidate_requires_adapter","url":"https://www.cgtn.com/tv","note":"Official public live page; not a ready-to-use stable M3U subscription."},
+    {"id":"fanmingming","kind":"related_tools","status":"reference_only","url":"https://github.com/fanmingming/live","note":"Current README emphasizes logos, EPG and tools. Not treated as a newly verified stream pool."},
+    {"id":"guovin-iptv-api","kind":"related_tools","status":"reference_only","url":"https://github.com/Guovin/iptv-api","note":"Aggregation/checking tool; its documentation requires users to supply subscriptions."},
+    {"id":"zhimin-checker","kind":"related_tools","status":"reference_only","url":"https://github.com/zhimin-dev/iptv-checker","backend":"https://github.com/zhimin-dev/iptv-checker-rs","note":"Compared implementation. Not a stream source or a bundled runtime dependency."}
+  ]
+}

@@ -29,6 +29,7 @@ Run it on your own server, import the output into your M3U player or use built-i
 | **Check real video** | Decode actual frames and inspect media progression, rather than accepting an address solely because it responds. |
 | **Make channel choice easier** | Merge duplicate channel names and rank sources by startup, recent test results and historical reliability. |
 | **Keep alternatives ready** | Top3, Top5 and three single-source sets give you a main route and practical backups. |
+| **Curate your own extras** | Optionally append an operator-curated group, such as international news, to Top3 and the three sets without re-testing it. |
 | **Keep television separate** | Filter explicit radio entries and audio-only TV candidates; put English channels in a separate subscription. |
 | **Automate the routine** | Run unattended with scheduling, per-host concurrency control, retry handling and publication guards. |
 | **See what changed** | Review source contributions, failures and historical results in the dashboard or exported reports. |

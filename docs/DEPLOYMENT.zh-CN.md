@@ -81,6 +81,10 @@ sudo install -m 0600 config/obs.env.example /etc/iptv-qa/obs.env
 
 systemd 会加载该文件；手动执行时使用环境变量，避免将值写入命令历史。程序不会创建桶、开放访问或修改 ACL。公开读取方式由部署者设置。TLS 校验使用 certifi。九个对象逐个覆盖，部分失败时记录错误，可用 `--upload-only` 重试。
 
+## 精选国际新闻分组
+
+在主机上放置精选 M3U 文件，并在配置中设置 `international_news.path`，每次发布时其条目会作为一个分组（默认名 `International News`，可用 `group_title` 覆盖）附加到 Top3 与三套。文件由运维者精选，检测器不会重新验证；文件缺失仅记录告警，其余内容照常发布。`iptv-qa-sets.service` 可不重测、直接从当前 Top5 刷新三套；Top3 在下一次完整运行时带上该分组。
+
 ## systemd 部署
 
 已有生产检测时，不要让第二个服务共用其数据目录。公开项目的目录名与原私有部署分开。

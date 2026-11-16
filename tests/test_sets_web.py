@@ -50,6 +50,29 @@ class SetTests(unittest.TestCase):
         self.assertEqual(stats['channels_per_set'], 0)
         self.assertTrue(all(text == '#EXTM3U\n' for text in files.values()))
 
+    def test_international_news_group_is_rewritten_and_appended(self):
+        with tempfile.TemporaryDirectory(dir=os.environ.get('IPTV_TEST_TMPDIR')) as temp:
+            news = Path(temp) / 'news.m3u'
+            news.write_text('#EXTM3U\n#EXTINF:-1 group-title="News TV",CGTN\nhttps://news.test/live\n'
+                            '#EXTINF:-1,BBC World Service\nhttps://radio.test/stream\n', encoding='utf-8')
+            cfg = {'international_news': {'path': str(news), 'group_title': 'International News'}}
+            lines, summary = app.international_news(cfg)
+        self.assertEqual(summary, {'group_title': 'International News', 'state': 'ok', 'entries': 2})
+        text = app.append_group(self.playlist(), lines)
+        entries = app.parse_playlist(text)
+        self.assertEqual([e['name'] for e in entries],
+                         ['One', 'Two', 'Two', 'Three', 'Three', 'Three', 'CGTN', 'BBC World Service'])
+        self.assertEqual([e['group'] for e in entries[-2:]], ['International News'] * 2)
+        self.assertTrue(all(e['group'] == 'TV' for e in entries[:-2]))
+
+    def test_international_news_absent_config_or_missing_file_never_blocks_publication(self):
+        lines, summary = app.international_news({})
+        self.assertEqual(summary['state'], 'disabled')
+        self.assertEqual(app.append_group('#EXTM3U\n', lines), '#EXTM3U\n')
+        lines, summary = app.international_news({'international_news': {'path': 'Z:/missing/news.m3u'}})
+        self.assertEqual(summary['state'], 'unavailable')
+        self.assertEqual(lines, [])
+
     def test_daily_upload_publishes_existing_lists_and_three_new_sets(self):
         client = mock.Mock()
         client.putFile.return_value.status = 200
@@ -76,6 +99,27 @@ class SetTests(unittest.TestCase):
                 decode.assert_not_called()
             self.assertEqual(len(list((data / 'runs').iterdir())), 1)
             self.assertTrue((data / 'published/iptv_set3.m3u').is_file())
+
+    @unittest.skipIf(os.name == 'nt', 'Production publication uses Linux symlinks')
+    def test_generate_existing_sets_appends_configured_international_news(self):
+        with tempfile.TemporaryDirectory(dir=os.environ.get('IPTV_TEST_TMPDIR')) as temp:
+            data = Path(temp)
+            news = data / 'news.m3u'
+            news.write_text('#EXTM3U\n#EXTINF:-1 group-title="News TV",DW English\nhttps://news.test/live\n',
+                            encoding='utf-8')
+            export = data / 'runs/20261115T000000Z-33333333/export'
+            export.mkdir(parents=True)
+            (export / 'iptv_top5.m3u').write_text(self.playlist(), encoding='utf-8')
+            (export / 'report.json').write_text(json.dumps({'published': True, 'channels_available': 3}))
+            app.publish_local(data, export)
+            app.generate_current_sets({'data_dir': str(data), 'obs': {'enabled': False},
+                                       'international_news': {'path': str(news)}})
+            for index in (1, 2, 3):
+                entries = app.parse_playlist((data / 'published/iptv_set{}.m3u'.format(index)).read_text(encoding='utf-8'))
+                self.assertEqual(entries[-1]['name'], 'DW English')
+                self.assertEqual(entries[-1]['group'], 'International News')
+            report = json.loads((export / 'report.json').read_text())
+            self.assertEqual(report['international_news']['entries'], 1)
 
 
 @unittest.skipIf(os.name == 'nt', 'HTTP service integration is validated on the ECS')

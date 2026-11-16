@@ -47,6 +47,10 @@
   "minimum_publish_ratio": 0.5,
   "retention_days": 14,
   "epg_url": "",
+  "international_news": {
+    "path": "/var/lib/iptv-qa/international-news.m3u",
+    "group_title": "International News"
+  },
   "obs": {
     "enabled": false,
     "endpoint": "",

@@ -13,6 +13,7 @@ Review / 审阅：[PR #1](https://github.com/Nzy189/iptv-QA/pull/1) 已合并。
 - Compatibility / 兼容：seven old root modules remain shims. Existing QA policy, playlist names, player URLs and frontend behaviors are preserved. `check` retains integrated optional publication.
 - Playback / 放映：proxy, sessions/registry, transcoding and service are split; assets are packaged. Standalone player mode, adjustable transcode concurrency/idle limits and shutdown cleanup added. Combined or separate HTTP service templates are available.
 - Documentation / 文档：paired architecture and playback guides; README presents the major modules; detection/deployment guides are targeted; research is marked historical and roadmap contradictions removed.
+- Curated group / 精选分组：optional `international_news` config appends a curated M3U as one group (default title `International News`) to Top3 and the three sets, including the English Top3, never to Top5. Entries bypass QA validation; a missing file only warns and publication continues. Implemented, tested and deployed to the owner's private production host on 2026-11-16: the published Top3 and three sets now carry the 14-entry group, Top5 stays QA-only. / 已实现、测试并部署到私有生产主机：Top3 与三套已带 14 条精选分组，Top5 保持纯质检输出。
 
 ## Verification / 验证证据
 
@@ -21,6 +22,7 @@ Review / 审阅：[PR #1](https://github.com/Nzy189/iptv-QA/pull/1) 已合并。
 - Linux compatibility: all 91 tests passed with Python 3.6.8 in an isolated source directory. FFmpeg 7.0.2 fixtures passed Top3/Top5 publication, zero-result retention, audio-only rejection, radio exclusion and two-connection publication.
 - Wheel built successfully; isolated extraction validates legacy imports, player assets and standalone CLI without importing the detector for playback. This validates packaging, not real upstream playback quality.
 - GitHub CI passed on Python 3.10, 3.12 and 3.14, including real media and wheel isolation on 3.12: [push run](https://github.com/Nzy189/iptv-QA/actions/runs/43902507773), [PR run](https://github.com/Nzy189/iptv-QA/actions/runs/43902676826). Local publication audit passed with zero detected secrets and zero broken document links.
+- International news group (2026-11-16): 94 unit/HTTP tests on Windows — 84 passed, 10 Linux-only cases skipped (9 previous plus the new generate-sets append case). The real 14-entry `data/news-research/news-curated.m3u` was smoke-tested through `international_news()` + `append_group()`: all entries rewritten into one `International News` group. Publication audit: `PUBLICATION_AUDIT_OK files=98 secrets=0 broken_local_links=0`. Deployment verified the same day on the private host: its sets/upload services ran clean, and the public OBS objects were re-fetched and counted — 14 group entries in `iptv_top3.m3u` and each of the three sets, 0 in `iptv_ok.m3u`. The production checker is the pre-modular single file and received a minimal backport with a kept backup; the next successful full publication reproduces the group natively. / 精选分组已过 Windows 94 项测试、真实清单冒烟和发布审计，并已在私有主机部署验证：OBS 公网对象中 Top3 与三套各 14 条、Top5 为 0。
 - Existing release/media evidence is retained in `docs/VALIDATION.json`; this branch's checks are recorded separately. No production services were replaced or restarted.
 
 ## Continue here / 后续接续
@@ -33,3 +35,21 @@ Review / 审阅：[PR #1](https://github.com/Nzy189/iptv-QA/pull/1) 已合并。
 ## Remaining product work / 后续能力
 
 Separate audio/video QA, A/V synchronization, black/freeze/silence review, receiver comparisons and longer frequently watched Top1 checks remain plans. The browser player is already implemented; restart persistence and further compatibility improvements remain optional work. See [roadmap](ROADMAP.md).
+
+## Local news shortlist research / 本地新闻精选研究（2026-11-16）
+
+- Prepared ignored local M3U artifacts with 14 entries (10 video channels and 4 audio-only radio services), plus separate TV/radio lists. This is an exploratory shortlist, not a released feature or deployed subscription.
+- 已生成 Git 忽略的本地14项精选及电视/广播分表（10个视频频道、4个纯广播）；属于研究产物，未发布、未部署。
+- Evidence / 证据：`python data/news-research/probe.py`, `python data/news-research/extra.py`, `python data/news-research/export.py`; ffprobe identified audio and FFmpeg decoded four seconds of audio for each included entry. Durations measure probing, not receiver startup; long-term playback and production-network performance remain unverified.
+- CNN FAST failed audio decoding after successful probing; tested Taiwan sources and RTHK TV32 did not pass. Excluded failed candidates. Audio-only radio must remain separate from video-required checker inputs. / CNN FAST、已测台湾源及港台电视32未通过全部检查，未纳入；广播不应送入要求视频的检测流程。
+- The research itself changed no runtime code; the shortlist now feeds the optional `international_news` publication feature (see Current work), which was deployed on 2026-11-16. / 研究阶段未改运行代码；该精选清单现已接入可选的 `international_news` 发布功能（见上），并已部署。
+
+## Diagnostic interpretation / 检测结果解释（2026-11-16）
+
+- Read-only operational review confirmed that short-decode success and complete deep/reconnect success are different metrics; historical results from different validation policies must not be presented as a direct outage percentage. Publication safety can intentionally retain an older playlist and return a nonzero service exit. / 只读核查确认短检通过与完整深检复检通过是不同指标；不同检测策略的历史数量不能直接当成失效比例。发布保护可能主动保留旧订阅并返回非零服务退出码。
+- Detailed installation evidence remains in ignored local context. No runtime, configuration, deployment or publication changes were made. / 具体部署证据保留在被忽略的本地记录，未修改运行代码、配置、部署或发布结果。
+
+## Scheduling operation / 调度操作（2026-11-16）
+
+- Applied the user-confirmed daily cadence to the existing private deployment timer; backed up its prior unit and verified the timer active and next execution with `systemctl list-timers`. Installation-specific times and paths remain in ignored local context. / 按用户确认将私有部署定时器改为每日执行，备份旧配置，使用 `systemctl list-timers` 验证已激活及下次执行时间；具体时间和路径保留在忽略的本地记录。
+- Checker process, QA policy and published subscriptions were unchanged; repository example schedules remain examples. / 未启动检测任务、修改检测标准或更换订阅；仓库调度示例未变。

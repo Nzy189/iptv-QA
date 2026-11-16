@@ -490,6 +490,43 @@ def split_ranked_playlist(text):
     return outputs, stats
 
 
+INTERNATIONAL_NEWS_GROUP = 'International News'
+
+
+def international_news(cfg):
+    """Curated extra group appended to Top3 and the three sets; bypasses QA validation."""
+    settings = cfg.get('international_news') or {}
+    path = settings.get('path', '')
+    group = settings.get('group_title') or INTERNATIONAL_NEWS_GROUP
+    summary = {'group_title': group, 'state': 'disabled', 'entries': 0}
+    if not path:
+        return [], summary
+    try:
+        entries = parse_playlist(Path(path).read_text(encoding='utf-8-sig'))
+    except (OSError, ValueError) as exc:
+        LOG.warning('International news playlist unavailable (%s); publishing without the group', type(exc).__name__)
+        summary['state'] = 'unavailable'
+        return [], summary
+    lines = []
+    for entry in entries:
+        prefix, name = split_extinf(entry['info'])
+        if 'group-title="' in prefix:
+            prefix = re.sub(r'group-title="[^"]*"', 'group-title="{}"'.format(group), prefix, count=1)
+        else:
+            prefix += ' group-title="{}"'.format(group)
+        lines.append(prefix + ',' + name)
+        lines.extend(entry['extra'])
+        lines.append(entry['output_url'])
+    summary.update(state='ok', entries=len(entries))
+    return lines, summary
+
+
+def append_group(text, lines):
+    if not lines:
+        return text
+    return text.rstrip('\n') + '\n' + '\n'.join(lines) + '\n'
+
+
 def source_comparison(channels, endpoints, decodes, outputs):
     sources = sorted({s for ep in endpoints.values() for s in ep.get('sources', [])})
     selected = {n: parse_playlist(text) if '#EXTINF:' in text else [] for n, text in outputs.items()}
@@ -641,9 +678,11 @@ def generate_current_sets(cfg):
     files, stats = split_ranked_playlist((export / 'iptv_top5.m3u').read_text(encoding='utf-8'))
     if stats['channels_per_set'] != report['channels_available']:
         raise RuntimeError('Set channel count differs from validated publication')
+    news_lines, news_summary = international_news(cfg)
     for filename, text in files.items():
-        atomic_text(export / filename, text)
+        atomic_text(export / filename, append_group(text, news_lines))
     report['sets'] = stats
+    report['international_news'] = news_summary
     publish_local(data_dir, export)
     try:
         result = publish_obs(export, cfg.get('obs', {}), filenames=tuple(files))
@@ -852,6 +891,7 @@ def main(argv=None):
             finally:
                 history.close()
         outputs, stats = render_playlists(channels, probes, decodes, reliability, cfg.get('epg_url', ''))
+        news_lines, news_summary = international_news(cfg)
         set_files, set_stats = split_ranked_playlist(outputs[5])
         report = dict(stats, run_id=run_id, started_at=state['started_at'], finished_at=utcnow(),
                       sources=source_stats, unique_endpoints=len(endpoints), tested_endpoints=len(eps),
@@ -861,9 +901,14 @@ def main(argv=None):
                       errors=dict(collections.Counter(r['error'] for r in list(probes.values()) + list(decodes.values())
                                   if not r['ok'] and r['error'] != 'not_deep_verified')),
                       diagnostic_sample=bool(args.limit), published=False, sets=set_stats, quality=quality_report,
+                      international_news=news_summary,
                       concurrency={key: cfg.get(key) for key in ('probe_workers', 'probe_per_host', 'probe_retry_workers',
                                    'probe_retry_per_host', 'decode_workers', 'decode_per_host', 'decode_retry_workers', 'decode_retry_per_host')})
         report['source_comparison'] = source_comparison(channels, endpoints, decodes, outputs)
+        # Top5 stays QA-only; the curated group joins Top3 and the three sets.
+        outputs[3] = append_group(outputs[3], news_lines)
+        for filename in set_files:
+            set_files[filename] = append_group(set_files[filename], news_lines)
         export_dir = run_dir / 'export'
         export_dir.mkdir()
         for count, text in outputs.items():

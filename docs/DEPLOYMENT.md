@@ -81,6 +81,10 @@ sudo install -m 0600 config/obs.env.example /etc/iptv-qa/obs.env
 
 The systemd service reads that environment file. For an interactive run, export these variables in the shell without placing values in command history. The adapter does not create a bucket, grant public access, or change ACLs. Configure the bucket's intended read access separately. TLS certificate validation uses certifi. Uploading nine objects is sequential; partial upload failure is reported and can be retried with `--upload-only`.
 
+## Curated international-news group
+
+Place a curated M3U file on the host and set `international_news.path` in the config to append its entries as one group (default title `International News`; override with `group_title`) to Top3 and the three sets on every publication. The file is operator-curated and is not re-validated by the checker; a missing file only logs a warning and publication continues without the group. `iptv-qa-sets.service` refreshes the sets from the current Top5 without rechecking; Top3 picks the group up on the next full run.
+
 ## systemd deployment
 
 Do not enable a second checker against an existing production data directory. The public project's default directory names are independent of the original private deployment.

@@ -72,6 +72,8 @@ Local files share one versioned export directory and switch through a `published
 
 OBS is an independent optional adapter. Fixed keys preserve subscription URLs. SDK failures retry; failed uploads retain local results for `--upload-only`. Uploading multiple OBS objects is sequential, not atomic, and never changes bucket ACLs. Chinese and English runs have separate publication directories. Only sanitized summaries are public; detailed JSONL can contain URLs and tokens and stays private.
 
+An optional curated `international_news` playlist is appended under one group title (default `International News`) to Top3 and the three sets, including the English Top3, but never to Top5. These entries bypass QA validation and are the operator's responsibility; a missing or unreadable file only logs a warning, and publication continues without the group.
+
 ## Known limitations
 
 - Deep checks decode video only. Audio decoding, silence, A/V drift and full receiver codec compatibility are not validated.

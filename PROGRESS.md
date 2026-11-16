@@ -8,7 +8,7 @@ Live progress: [main/PROGRESS.md](https://github.com/Nzy189/iptv-QA/blob/main/PR
 
 ## Current state / 当前状态
 
-- Project name: **iptv-QA**, release candidate **v0.1.0**. ECS verification and local download are complete. Public repository created and local main branch pushed: **https://github.com/Nzy189/iptv-QA**. GitHub CI and release publishing are in progress; no release is claimed yet.
+- Project name: **iptv-QA**, release candidate **v0.1.0**. Public repository: **https://github.com/Nzy189/iptv-QA**. ECS verification, local download, push and GitHub CI have passed. Release creation is the remaining publication step; no release is claimed yet.
 - 源码已从运行部署中单独整理；OBS 默认关闭，可配置区域、Endpoint、桶、前缀、对象名、缓存头及重试；本地网页无需 OBS 即可提供订阅。
 - Public source registry distinguishes configured inputs, untested candidates and reference tools. Private subscriptions and raw playlists are excluded.
 - 中英文 README、设计、部署、来源、测试、网页播放器可行性文档均完成，并提供语言切换；`AGENTS.md` 指定每次先读本进度。
@@ -24,15 +24,15 @@ Live progress: [main/PROGRESS.md](https://github.com/Nzy189/iptv-QA/blob/main/PR
 | Local playlist dashboard | Local-only serving without OBS passed Linux HTTP integration |
 | Bilingual entry and design | README and design language-switch links present |
 | GitHub repository | Public Nzy189/iptv-QA created; main branch pushed from the local checkout |
-| GitHub CI | Initial run 43849303236: Python 3.10/3.14 passed; 3.12 real-media stage pending at last observation |
+| GitHub CI | **Run [43849545891](https://github.com/Nzy189/iptv-QA/actions/runs/43849545891) passed** on Python 3.10, 3.12 and 3.14, including real-media tests on 3.12; tested code/workflow commit `dcdc7b3ec221b86501f728d836192b25b18a467c` |
 | Real-media checks | Full publication, zero-result retention and realtime HLS/audio-only checks passed |
 | Publication audit | Source-only package, no detected secret patterns or broken local documentation links |
 
 ## Active tasks / 正在做
 
 1. **Local handoff complete:** ECS source ZIP SHA-256 verified after download; local checkout and initial commit created. `dist/iptv-QA-v0.1.0.zip` is built only from tracked public files. The operator-specific local path is in ignored `.local-context.md`.
-2. GitHub 授权、公开仓库创建和首次推送已完成。正在验证完整 CI；进度和其他纯文档更新不重复触发昂贵的媒体测试。
-3. Verify the latest code/workflow CI, then publish `v0.1.0` with the source ZIP and SHA256SUMS. Record the release URL and target commit after verification.
+2. GitHub 授权、公开仓库和完整 CI 均完成；进度及其他纯文档更新不重复触发媒体测试。
+3. Publish `v0.1.0` with the source ZIP and SHA256SUMS. Record the release URL and target commit after verification.
 
 ## Radio incident / 广播问题
 
@@ -40,7 +40,7 @@ Live progress: [main/PROGRESS.md](https://github.com/Nzy189/iptv-QA/blob/main/PR
 - OBS set1 was downloaded and SHA-256 matched the server's old published set1. Raw item 1094 was a movie entry; the receiver's displayed ordering may differ.
 - 三条实际广播源现场重新探测，全部被当前正在运行的新视频策略以 `audio_only_rejected` 拒绝。
 - The newly extracted public project also excludes explicit radio tags/names/groups, including radio with encoded cover video. TVB/music-TV exceptions have regression tests.
-- **Operational distinction:** the existing full QA run is still in deep checks and has not replaced the old OBS files. No immediate cleanup or fresh full-run publication is claimed here. The public-project radio metadata change is isolated from that already-running process.
+- **Operational distinction:** last checked 2026-11-16 14:32 Abu Dhabi: the existing full QA run was in `deep1` (887/1479, 174 passed) and had not replaced the old OBS files. Re-read live status before drawing a current conclusion. The public-project radio metadata change is isolated from that already-running process.
 
 ## Browser-player research / 网页播放器研究
 

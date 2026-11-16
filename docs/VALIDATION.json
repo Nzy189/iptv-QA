@@ -38,5 +38,17 @@
     ],
     "tested_commit": "dcdc7b3ec221b86501f728d836192b25b18a467c",
     "real_media_python": "3.12"
+  },
+  "modular_refactor": {
+    "date": "2026-11-16",
+    "branch": "refactor/modular-architecture",
+    "windows_unit_http": {
+      "total": 91,
+      "passed": 82,
+      "skipped_linux_only": 9
+    },
+    "wheel_isolation_and_assets": true,
+    "production_deployed": false,
+    "linux_ci": "pending"
   }
 }

@@ -1,5 +1,5 @@
 [Unit]
-Description=IPTV latest results and history dashboard on port 8088
+Description=Combined IPTV dashboard and optional browser player
 After=network.target
 
 [Service]
@@ -14,8 +14,9 @@ EnvironmentFile=-/etc/iptv-qa/tv.env
 ExecStart=/usr/bin/python3 /opt/iptv-QA/web.py --host 127.0.0.1 --port 8088 --data-dir /var/lib/iptv-qa
 Restart=on-failure
 RestartSec=5s
-CPUQuota=25%
-MemoryLimit=256M
+# Combined mode may spawn FFmpeg. Use the dashboard-only unit for a small quota.
+MemoryLimit=2G
+KillMode=control-group
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=full

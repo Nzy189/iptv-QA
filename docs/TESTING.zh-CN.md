@@ -28,3 +28,8 @@ GitHub Actions 在 Linux 上验证 Python 3.10、3.12、3.14，真实媒体样�
 ## 边界
 
 单元测试证明规则实现一致，不证明终端兼容、高峰稳定、频道内容正确或某个实播成功率。后续应以常看频道的接收设备反馈，统计误放行和误淘汰，再校准阈值。公开证据不得含操作者的地址和令牌。
+
+
+## Module and package validation / 模块与打包验证
+
+模块回归另见 `tests/test_modules.py`：独立命令、导入边界、维护锁、纯放映路由和资源回收。打包验证：先 `python3 -m pip wheel . --no-deps --wheel-dir dist/wheels`，再 `python3 scripts/validate_package.py --wheel dist/wheels/iptv_qa-0.1.0-py3-none-any.whl`。该验证从独立临时目录加载构建产物，检查网页资源和兼容入口。

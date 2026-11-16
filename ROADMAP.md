@@ -9,4 +9,4 @@ Released capabilities must be distinguished from plans. / 以下计划不能当�
 - Black/freeze/silence flags with repeated verification instead of automatic deletion on a single static scene. 黑屏、冻结和静音标记及复查。
 - Source contribution and confidence-aware historical ranking. 来源贡献和考虑样本数量的可靠性排序。
 - Optional small peak-hour samples; no automatic change to the existing three-night schedule. 可选高峰抽查，不擅自改变三晚调度。
-- A browser player importing set1 with previous/next/random controls: feasibility research only for now, see [research](docs/WEB_PLAYER_FEASIBILITY.md). 浏览器播放器当前只研究，不开发部署。
+- Improve the implemented browser player: restart persistence, deployment-specific transcode profiles and receiver compatibility. 已有网页放映后续优化：重启会话保持、转码档位和终端兼容；见[放映指南](docs/PLAYBACK.zh-CN.md)。

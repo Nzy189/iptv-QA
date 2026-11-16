@@ -38,3 +38,8 @@ jobs:
         run: |
           python scripts/validate_media.py --bin-dir /usr/bin
           python scripts/validate_quality.py --bin-dir /usr/bin
+      - name: Build and validate standalone package
+        if: matrix.python == '3.12'
+        run: |
+          python -m pip wheel . --no-deps --wheel-dir dist/wheels
+          python scripts/validate_package.py --wheel "$(find dist/wheels -name '*.whl' -print -quit)"

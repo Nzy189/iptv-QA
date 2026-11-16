@@ -1,3 +1,5 @@
+> 历史研究归档：本文记录实现前的可行性讨论，不代表当前功能状态。播放器现已实现；以[放映指南](PLAYBACK.zh-CN.md)和[项目架构](ARCHITECTURE.zh-CN.md)为准，旧文中的“暂不实现”不再适用。
+
 # 浏览器看电视可行性——仅研究
 
 [English](WEB_PLAYER_FEASIBILITY.md) | [简体中文](WEB_PLAYER_FEASIBILITY.zh-CN.md) · [进度](../PROGRESS.md)

@@ -28,3 +28,8 @@ Regression tests cover audio-only rejection, explicit radio entries even when th
 ## Limits of verification
 
 Unit tests show that rules are implemented consistently. They cannot establish receiver compatibility, peak-hour reliability, correct channel content or a failure-rate percentage. Future calibration should label receiver success/failure for frequently watched channels and measure false accepts as well as false rejects. Keep operator URLs and tokens out of all public evidence.
+
+
+## Module and package validation / 模块与打包验证
+
+Module regressions in `tests/test_modules.py` cover command/import independence, maintenance locks, player-only routing and lifecycle cleanup. Build using `python3 -m pip wheel . --no-deps --wheel-dir dist/wheels`, then run `python3 scripts/validate_package.py --wheel dist/wheels/iptv_qa-0.1.0-py3-none-any.whl`. This loads the built artifact in isolation and checks bundled frontend resources and legacy entry points.

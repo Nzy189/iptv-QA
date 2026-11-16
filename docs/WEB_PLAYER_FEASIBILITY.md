@@ -1,3 +1,5 @@
+> Historical research: this records the pre-implementation proposal, not current capability. The player is implemented; see [playback](PLAYBACK.md) and [architecture](ARCHITECTURE.md). Earlier research-only restrictions below are superseded.
+
 # Browser TV feasibility — research only
 
 [English](WEB_PLAYER_FEASIBILITY.md) | [简体中文](WEB_PLAYER_FEASIBILITY.zh-CN.md) · [Progress](../PROGRESS.md)

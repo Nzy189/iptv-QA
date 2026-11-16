@@ -4,9 +4,9 @@
 
 ## Current work / 当前工作
 
-Branch: `refactor/modular-architecture`, based on `5d38c3c`. The previous v0.1.0 release remains unchanged. This branch is a modular source refactor, not an automatic production upgrade.
+The modular architecture is merged into `main` at `7b523c2`. The previous v0.1.0 release remains unchanged; the repository update does not automatically upgrade a production installation.
 
-Review / 审阅：[PR #1](https://github.com/Nzy189/iptv-QA/pull/1). Implementation tested at `3a7b104`; subsequent progress/documentation updates do not change runtime behavior.
+Review / 审阅：[PR #1](https://github.com/Nzy189/iptv-QA/pull/1) 已合并。Implementation tested at `3a7b104`; subsequent progress/documentation updates do not change runtime behavior.
 
 - Implemented / 已实现：package `iptv_qa/` separates catalogue, detection, publishing, reporting and playback; shared parsing/I/O/locks are in `common`; HTTP hosting and scheduled orchestration are separate layers.
 - Independent commands / 独立命令：`python3 -m iptv_qa {catalog,check,publish,report,dashboard,play,serve,run}`. Playback needs no detector/config/OBS; report regeneration needs no media tools; upload retries need no new QA run.

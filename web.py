@@ -4,11 +4,13 @@ import argparse
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import logging
+import os
 from pathlib import Path
 from socketserver import ThreadingMixIn
 import threading
 from urllib.parse import unquote, urlsplit
 
+import tv
 from reporting import render_html
 
 PUBLIC_FILES = {'/iptv_history.csv': ('iptv_history.csv', 'text/csv; charset=utf-8'),
@@ -19,7 +21,7 @@ STATUS_FIELDS = ('run_id', 'state', 'stage', 'completed', 'total', 'passed', 'up
                  'finished_at', 'channels_available', 'top3_entries', 'top5_entries', 'error_type')
 
 
-def make_handler(data_dir, public_base):
+def make_handler(data_dir, public_base, tv_plugin=None):
     data_dir = Path(data_dir)
 
     class Handler(BaseHTTPRequestHandler):
@@ -28,7 +30,7 @@ def make_handler(data_dir, public_base):
 
         def setup(self):
             super().setup()
-            self.connection.settimeout(10)
+            self.connection.settimeout(60)
 
         def log_message(self, fmt, *args):
             logging.info('%s %s %r', self.client_address[0], self.command, urlsplit(self.path).path)
@@ -54,15 +56,26 @@ def make_handler(data_dir, public_base):
         def do_HEAD(self):
             self.do_GET()
 
+        def do_POST(self):
+            if tv_plugin is not None and tv_plugin.handle_post(self):
+                return
+            self.json_body({'error': 'not_found'}, 404)
+
         def do_GET(self):
             path = unquote(urlsplit(self.path).path)
             try:
+                if tv_plugin is not None and tv_plugin.handle_get(self):
+                    return
                 if path == '/healthz':
                     return self.json_body({'ok': True})
                 if path in ('/', '/iptv_summary.html'):
                     history = json.loads((data_dir / 'summaries/iptv_history.json').read_text(encoding='utf-8'))
                     page = render_html(history['runs'], history['generated_at'])
                     banner = '<section class="card" style="margin-top:18px"><b id="live-title">读取最新进度…</b><small id="live-detail">页面每 30 秒自动更新</small><div id="progress-wrap" hidden style="background:#e2e7ef;margin-top:10px;border-radius:5px;overflow:hidden"><div id="progress" style="height:6px;background:#155acc;width:0"></div></div></section>'
+                    if tv_plugin is not None:
+                        banner = banner.replace('</section>',
+                                                '<div style="margin-top:10px"><a href="/tv/" style="color:#155acc;font-weight:600">网页电视</a>'
+                                                '<small style="color:#57606a"> · 换台播放已验证频道</small></div></section>', 1)
                     page = page.replace('<section class="cards">', banner + '<section class="cards">', 1)
                     initial = json.dumps(history['generated_at']).replace('<', '\\u003c')
                     script = '''<script>
@@ -166,7 +179,17 @@ def main():
     parser.add_argument('--public-base', default='')
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
-    server = Server((args.host, args.port), make_handler(args.data_dir, args.public_base))
+    tv_plugin = None
+    password = os.environ.get('IPTV_TV_PASSWORD', '')
+    if password:
+        playlists = (('set1', 'Set1', 'iptv_set1.m3u'), ('set2', 'Set2', 'iptv_set2.m3u'),
+                     ('set3', 'Set3', 'iptv_set3.m3u'), ('top3', 'Top3', 'iptv_top3.m3u'))
+        tv_plugin = tv.TVPlugin(password, Path(__file__).resolve().parent / 'webtv',
+                                playlists, args.public_base)
+        logging.info('Web TV player enabled at /tv/')
+    else:
+        logging.warning('IPTV_TV_PASSWORD not set; web TV player disabled')
+    server = Server((args.host, args.port), make_handler(args.data_dir, args.public_base, tv_plugin))
     logging.info('IPTV dashboard listening on %s:%d', args.host, args.port)
     try:
         server.serve_forever()

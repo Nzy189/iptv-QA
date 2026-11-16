@@ -9,11 +9,13 @@ Group=iptv-qa
 WorkingDirectory=/opt/iptv-QA
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONIOENCODING=utf-8
+# Optional file: set IPTV_TV_PASSWORD to enable the /tv/ web player.
+EnvironmentFile=-/etc/iptv-qa/tv.env
 ExecStart=/usr/bin/python3 /opt/iptv-QA/web.py --host 127.0.0.1 --port 8088 --data-dir /var/lib/iptv-qa
 Restart=on-failure
 RestartSec=5s
 CPUQuota=25%
-MemoryLimit=128M
+MemoryLimit=256M
 NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectSystem=full

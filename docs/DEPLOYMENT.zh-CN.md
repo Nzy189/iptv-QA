@@ -100,3 +100,19 @@ sudo systemctl start iptv-qa-sets.service
 ```
 
 详细记录默认保留十四天，当前发布版本和 SQLite 汇总长期保留。私有配置及运行数据单独备份。升级前先读 [PROGRESS](../PROGRESS.md)。
+
+## 网页电视播放器
+
+仪表盘内置密码门禁的网页电视，路径 `/tv/`：加载订阅后提供频道列表、搜索、上一台/下一台/随机、遥控器式台号输入、全屏和手机布局。源选择栏可直接点选本页发布的最新订阅（Set1/Set2/Set3/Top3），也可粘贴任意 m3u 链接。
+
+服务端代取订阅并同源代理 HLS 清单、分片、密钥与音轨（保留每频道 `User-Agent`/`Referer` 选项），浏览器用内置 hls.js 播放。**默认不转码**：只有浏览器解不了编码或"有声音无画面"时，前端自动请求服务器按需转码（FFmpeg 转 H.264/AAC，封顶 720p/2Mbps）；最多 2 路并发，闲置 90 秒自动停止，不占用检测资源。纯音频频道会明确提示"只有声音，没有画面"。
+
+设置访问密码（不设则播放器自动禁用）：
+
+```bash
+sudo install -m 0600 config/tv.env.example /etc/iptv-qa/tv.env
+# 编辑该文件，将 IPTV_TV_PASSWORD 改为真实密码；需要转码时可设 IPTV_TV_FFMPEG 指向 ffmpeg 路径。
+sudo systemctl restart iptv-qa-web.service
+```
+
+安全边界：密码错误会延迟一秒并返回 401；会话 Cookie 为 HttpOnly、SameSite=Strict，服务重启后失效；代理只转发已加载清单中发现过的地址，不能当作任意代理；云元数据地址被拒绝。密码不要外传，生产环境建议配合防火墙限制来源 IP。

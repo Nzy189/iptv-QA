@@ -100,3 +100,19 @@ sudo systemctl start iptv-qa-sets.service     # split current Top5 without reche
 ```
 
 Detailed runs default to 14 days of retention, while the current publication and SQLite summaries persist. Back up private config and data independently. Read [PROGRESS](../PROGRESS.md) before upgrading a running deployment.
+
+## Web TV player
+
+The dashboard ships a password-gated web TV player at `/tv/`: after loading a playlist it offers a channel list with search, previous/next/random switching, remote-style number entry, fullscreen and a mobile layout. The source bar offers the published subscriptions shown on the dashboard (Set1/Set2/Set3/Top3) as one-click presets, and accepts any custom m3u URL.
+
+The server fetches playlists and proxies HLS manifests, segments, keys and audio tracks same-origin (honouring per-channel `User-Agent`/`Referer` options); browsers play through the vendored hls.js. **No transcoding by default**: only when the browser cannot decode the codec or a channel plays audio without video does the frontend request an on-demand server transcode (FFmpeg to H.264/AAC, capped at 720p/2 Mbps); at most 2 concurrent transcodes, idle ones stop after 90 seconds. Audio-only channels show an explicit "sound without picture" notice.
+
+Set the access password (the player stays disabled without it):
+
+```bash
+sudo install -m 0600 config/tv.env.example /etc/iptv-qa/tv.env
+# Edit the file: set IPTV_TV_PASSWORD to the real password; optionally point IPTV_TV_FFMPEG at an ffmpeg binary for transcoding.
+sudo systemctl restart iptv-qa-web.service
+```
+
+Security boundaries: wrong passwords are delayed by one second and answered with 401; the session cookie is HttpOnly with SameSite=Strict and dies on service restart; the proxy only forwards addresses discovered inside loaded playlists and cannot be used as an open proxy; cloud metadata addresses are refused. Do not share the password; restrict source IPs with a firewall in production.

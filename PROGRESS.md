@@ -6,6 +6,8 @@
 
 Branch: `refactor/modular-architecture`, based on `5d38c3c`. The previous v0.1.0 release remains unchanged. This branch is a modular source refactor, not an automatic production upgrade.
 
+Review / 审阅：[PR #1](https://github.com/Nzy189/iptv-QA/pull/1). Implementation tested at `3a7b104`; subsequent progress/documentation updates do not change runtime behavior.
+
 - Implemented / 已实现：package `iptv_qa/` separates catalogue, detection, publishing, reporting and playback; shared parsing/I/O/locks are in `common`; HTTP hosting and scheduled orchestration are separate layers.
 - Independent commands / 独立命令：`python3 -m iptv_qa {catalog,check,publish,report,dashboard,play,serve,run}`. Playback needs no detector/config/OBS; report regeneration needs no media tools; upload retries need no new QA run.
 - Compatibility / 兼容：seven old root modules remain shims. Existing QA policy, playlist names, player URLs and frontend behaviors are preserved. `check` retains integrated optional publication.
@@ -16,8 +18,10 @@ Branch: `refactor/modular-architecture`, based on `5d38c3c`. The previous v0.1.0
 
 - Baseline before refactor: 81 unit/HTTP tests; Windows skipped 9 Linux-only cases.
 - Refactor: 91 unit/HTTP tests; Windows passed 82 and skipped the same 9 Linux-only cases. Added tests cover import boundaries, independent commands, locks, standalone HTTP routing and player cleanup.
+- Linux compatibility: all 91 tests passed with Python 3.6.8 in an isolated source directory. FFmpeg 7.0.2 fixtures passed Top3/Top5 publication, zero-result retention, audio-only rejection, radio exclusion and two-connection publication.
 - Wheel built successfully; isolated extraction validates legacy imports, player assets and standalone CLI without importing the detector for playback. This validates packaging, not real upstream playback quality.
-- Existing release/media evidence is retained in `docs/VALIDATION.json`; new branch checks are recorded separately. Linux/media CI must pass before merging.
+- GitHub CI passed on Python 3.10, 3.12 and 3.14, including real media and wheel isolation on 3.12: [push run](https://github.com/Nzy189/iptv-QA/actions/runs/43902507773), [PR run](https://github.com/Nzy189/iptv-QA/actions/runs/43902676826). Local publication audit passed with zero detected secrets and zero broken document links.
+- Existing release/media evidence is retained in `docs/VALIDATION.json`; this branch's checks are recorded separately. No production services were replaced or restarted.
 
 ## Continue here / 后续接续
 

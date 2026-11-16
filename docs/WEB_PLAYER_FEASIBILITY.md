@@ -1,12 +1,12 @@
 > Historical research: this records the pre-implementation proposal, not current capability. The player is implemented; see [playback](PLAYBACK.md) and [architecture](ARCHITECTURE.md). Earlier research-only restrictions below are superseded.
 
-# Browser TV feasibility — research only
+# Browser TV feasibility — archived proposal
 
 [English](WEB_PLAYER_FEASIBILITY.md) | [简体中文](WEB_PLAYER_FEASIBILITY.zh-CN.md) · [Progress](../PROGRESS.md)
 
 ## Requested outcome
 
-Import the validated set1 playlist, provide large previous/next/random buttons and a channel list, and make playback available from a mobile or in-car passenger browser on the existing host and port. **No player implementation or deployment is included in this release.** The existing dashboard remains a QA dashboard.
+Import the validated set1 playlist, provide large previous/next/random buttons and a channel list, and make playback available from a mobile or in-car passenger browser on the existing host and port. At the proposal stage this was research only; the implemented feature is now described in the [playback guide](PLAYBACK.md).
 
 ## Assessment
 

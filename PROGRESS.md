@@ -8,7 +8,7 @@ Live progress: [main/PROGRESS.md](https://github.com/Nzy189/iptv-QA/blob/main/PR
 
 ## Current state / 当前状态
 
-- Project name: **iptv-QA**, release candidate **v0.1.0**. Public repository: **https://github.com/Nzy189/iptv-QA**. ECS verification, local download, push and GitHub CI have passed. Release creation is the remaining publication step; no release is claimed yet.
+- **Published / 已发布：iptv-QA v0.1.0**. Public repository: **https://github.com/Nzy189/iptv-QA**. Release: **https://github.com/Nzy189/iptv-QA/releases/tag/v0.1.0**. Published 2026-11-16 **14:33 Abu Dhabi**. ECS tests, local handoff, GitHub CI and release download verification have passed.
 - 源码已从运行部署中单独整理；OBS 默认关闭，可配置区域、Endpoint、桶、前缀、对象名、缓存头及重试；本地网页无需 OBS 即可提供订阅。
 - Public source registry distinguishes configured inputs, untested candidates and reference tools. Private subscriptions and raw playlists are excluded.
 - 中英文 README、设计、部署、来源、测试、网页播放器可行性文档均完成，并提供语言切换；`AGENTS.md` 指定每次先读本进度。
@@ -27,12 +27,14 @@ Live progress: [main/PROGRESS.md](https://github.com/Nzy189/iptv-QA/blob/main/PR
 | GitHub CI | **Run [43849545891](https://github.com/Nzy189/iptv-QA/actions/runs/43849545891) passed** on Python 3.10, 3.12 and 3.14, including real-media tests on 3.12; tested code/workflow commit `dcdc7b3ec221b86501f728d836192b25b18a467c` |
 | Real-media checks | Full publication, zero-result retention and realtime HLS/audio-only checks passed |
 | Publication audit | Source-only package, no detected secret patterns or broken local documentation links |
+| Release | Public, non-draft `v0.1.0`; target `7cac47518367c59f685a6211431efe89ddd37c9a`; source ZIP and SHA256SUMS uploaded and downloaded again with identical SHA-256 |
 
-## Active tasks / 正在做
+## Publication completed / 发布已完成
 
 1. **Local handoff complete:** ECS source ZIP SHA-256 verified after download; local checkout and initial commit created. `dist/iptv-QA-v0.1.0.zip` is built only from tracked public files. The operator-specific local path is in ignored `.local-context.md`.
 2. GitHub 授权、公开仓库和完整 CI 均完成；进度及其他纯文档更新不重复触发媒体测试。
-3. Publish `v0.1.0` with the source ZIP and SHA256SUMS. Record the release URL and target commit after verification.
+3. `v0.1.0` 已公开发布，源码包和 SHA256SUMS 已上传并回下载校验一致。发布目标提交记录在上表；main 的进度文档会继续更新，版本包保持打包时快照。
+4. **Next operational follow-up / 下一项运维跟进：** check completion/publication of the separately running production QA and verify that the old audio-containing subscriptions have actually been replaced. Do not infer this from the GitHub release.
 
 ## Radio incident / 广播问题
 
@@ -50,9 +52,9 @@ Completed feasibility documents and primary-source review of hls.js, IPTVnator, 
 
 - Re-read this file and any ignored `.local-context.md` before reconnecting or publishing.
 - Check the radio investigation evidence; do not assume the old published list already uses the new QA rules.
-- Run the full Linux suite and real-media fixtures against the public project, then record actual counts here.
+- For detection/runtime changes, run the Linux suite and relevant real-media fixtures, then update evidence. For documentation-only changes, run the publication/link audit; CI deliberately skips pure documentation updates.
 - Verify documentation links, excluded files and archive content before commit/push.
-- Record the canonical repository URL, commit SHA, release tag, CI state and download location only after verification.
+- Keep repository/release URLs and verified test evidence above accurate; record new release targets only after verification.
 
 ## Deferred work / 暂不开发
 

@@ -6,7 +6,7 @@ Read this file first when continuing. / 每次续接任务先读取本文件。
 
 ## Current state / 当前状态
 
-- Project name: **iptv-QA**, release candidate **v0.1.0**. ECS verification and local download are complete. Local Git commits and a source release ZIP are ready; GitHub device authentication is still pending. No public release is claimed yet.
+- Project name: **iptv-QA**, release candidate **v0.1.0**. ECS verification and local download are complete. GitHub CLI authentication is confirmed as **Nzy189**; repository creation, push, CI verification and release publishing are now in progress. No public release is claimed yet.
 - 源码已从运行部署中单独整理；OBS 默认关闭，可配置区域、Endpoint、桶、前缀、对象名、缓存头及重试；本地网页无需 OBS 即可提供订阅。
 - Public source registry distinguishes configured inputs, untested candidates and reference tools. Private subscriptions and raw playlists are excluded.
 - 中英文 README、设计、部署、来源、测试、网页播放器可行性文档均完成，并提供语言切换；`AGENTS.md` 指定每次先读本进度。
@@ -21,14 +21,14 @@ Read this file first when continuing. / 每次续接任务先读取本文件。
 | Optional OBS configuration | Region resolution, explicit endpoint precedence, retry/cache settings have regression tests |
 | Local playlist dashboard | Local-only serving without OBS passed Linux HTTP integration |
 | Bilingual entry and design | README and design language-switch links present |
-| GitHub tooling | Isolated GitHub CLI verified on ECS; repository authentication/publishing not yet completed |
+| GitHub tooling | Local GitHub CLI authenticated as Nzy189; repository/release publishing in progress |
 | Real-media checks | Full publication, zero-result retention and realtime HLS/audio-only checks passed |
 | Publication audit | Source-only package, no detected secret patterns or broken local documentation links |
 
 ## Active tasks / 正在做
 
 1. **Local handoff complete:** ECS source ZIP SHA-256 verified after download; local checkout and initial commit created. `dist/iptv-QA-v0.1.0.zip` is built only from tracked public files. The operator-specific local path is in ignored `.local-context.md`.
-2. GitHub 新仓库需要 CLI 登录授权；现有连接不能直接新建仓库。设备授权已发起，等待用户完成。发布目标名称为 `iptv-QA`。
+2. GitHub 设备授权已完成，账号确认为 Nzy189；目标 `Nzy189/iptv-QA` 尚不存在，正在创建并从本地推送。
 3. After authentication, create the public `Nzy189/iptv-QA` repository, push the local main branch, verify CI and publish tag/release `v0.1.0` with the source ZIP and SHA256SUMS. Do not claim these steps have happened until verified.
 
 ## Radio incident / 广播问题

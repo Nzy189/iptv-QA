@@ -4,9 +4,11 @@
 
 Read this file first when continuing. / 每次续接任务先读取本文件。
 
+Live progress: [main/PROGRESS.md](https://github.com/Nzy189/iptv-QA/blob/main/PROGRESS.md). Release archives retain a build-time snapshot. / 最新状态以 main 为准，版本压缩包保留打包时的进度快照。
+
 ## Current state / 当前状态
 
-- Project name: **iptv-QA**, release candidate **v0.1.0**. ECS verification and local download are complete. GitHub CLI authentication is confirmed as **Nzy189**; repository creation, push, CI verification and release publishing are now in progress. No public release is claimed yet.
+- Project name: **iptv-QA**, release candidate **v0.1.0**. ECS verification and local download are complete. Public repository created and local main branch pushed: **https://github.com/Nzy189/iptv-QA**. GitHub CI and release publishing are in progress; no release is claimed yet.
 - 源码已从运行部署中单独整理；OBS 默认关闭，可配置区域、Endpoint、桶、前缀、对象名、缓存头及重试；本地网页无需 OBS 即可提供订阅。
 - Public source registry distinguishes configured inputs, untested candidates and reference tools. Private subscriptions and raw playlists are excluded.
 - 中英文 README、设计、部署、来源、测试、网页播放器可行性文档均完成，并提供语言切换；`AGENTS.md` 指定每次先读本进度。
@@ -21,15 +23,16 @@ Read this file first when continuing. / 每次续接任务先读取本文件。
 | Optional OBS configuration | Region resolution, explicit endpoint precedence, retry/cache settings have regression tests |
 | Local playlist dashboard | Local-only serving without OBS passed Linux HTTP integration |
 | Bilingual entry and design | README and design language-switch links present |
-| GitHub tooling | Local GitHub CLI authenticated as Nzy189; repository/release publishing in progress |
+| GitHub repository | Public Nzy189/iptv-QA created; main branch pushed from the local checkout |
+| GitHub CI | Initial run 43849303236: Python 3.10/3.14 passed; 3.12 real-media stage pending at last observation |
 | Real-media checks | Full publication, zero-result retention and realtime HLS/audio-only checks passed |
 | Publication audit | Source-only package, no detected secret patterns or broken local documentation links |
 
 ## Active tasks / 正在做
 
 1. **Local handoff complete:** ECS source ZIP SHA-256 verified after download; local checkout and initial commit created. `dist/iptv-QA-v0.1.0.zip` is built only from tracked public files. The operator-specific local path is in ignored `.local-context.md`.
-2. GitHub 设备授权已完成，账号确认为 Nzy189；目标 `Nzy189/iptv-QA` 尚不存在，正在创建并从本地推送。
-3. After authentication, create the public `Nzy189/iptv-QA` repository, push the local main branch, verify CI and publish tag/release `v0.1.0` with the source ZIP and SHA256SUMS. Do not claim these steps have happened until verified.
+2. GitHub 授权、公开仓库创建和首次推送已完成。正在验证完整 CI；进度和其他纯文档更新不重复触发昂贵的媒体测试。
+3. Verify the latest code/workflow CI, then publish `v0.1.0` with the source ZIP and SHA256SUMS. Record the release URL and target commit after verification.
 
 ## Radio incident / 广播问题
 

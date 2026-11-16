@@ -29,10 +29,10 @@ STATIC_FILES = {'/tv/': ('index.html', 'text/html; charset=utf-8'),
 PLAYER_CSP = ("default-src 'none'; script-src 'self'; style-src 'self'; media-src 'self' blob:; "
               "connect-src 'self'; img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'")
 URI_ATTR = re.compile(r'URI="([^"]*)"')
-PLAY_PATH = re.compile(r'^/tv/play/(\d+)$')
+PLAY_PATH = re.compile(r'^/tv/play/(\d+)(?:/(\d+))?$')
 STREAM_PATH = re.compile(r'^/tv/stream/(\d+)$')
-TRANSCODE_PATH = re.compile(r'^/tv/transcode/(\d+)$')
-TSEG_PATH = re.compile(r'^/tv/tseg/(\d+)/([A-Za-z0-9._-]+)$')
+TRANSCODE_PATH = re.compile(r'^/tv/transcode/(\d+)(?:/(\d+))?$')
+TSEG_PATH = re.compile(r'^/tv/tseg/([0-9-]+)/([A-Za-z0-9._-]+)$')
 SEGMENT_NAME = re.compile(r'^[A-Za-z0-9._-]+$')
 BLOCKED_HOSTS = ('169.254.169.254', 'metadata.google.internal')
 USER_AGENT = ('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
@@ -142,9 +142,9 @@ class Sessions:
                 self.data.move_to_end(token)
             return session
 
-    def set_source(self, token, url, channels):
+    def set_source(self, token, session):
         with self.lock:
-            self.data[token] = {'source': url, 'channels': channels}
+            self.data[token] = session
             self.data.move_to_end(token)
             while len(self.data) > self.limit:
                 self.data.popitem(last=False)
@@ -173,18 +173,18 @@ class Transcoders:
                 entry['last_used'] = time.time()
             return entry
 
-    def start(self, index, url, headers):
+    def start(self, key, url, headers):
         with self.lock:
-            entry = self.active.get(index)
+            entry = self.active.get(key)
             if entry:
                 entry['last_used'] = time.time()
                 if entry['process'].poll() is None:
                     return entry
-                self._stop_locked(index)
+                self._stop_locked(key)
             while len(self.active) >= self.limit:
-                oldest = min(self.active, key=lambda key: self.active[key]['last_used'])
+                oldest = min(self.active, key=lambda name: self.active[name]['last_used'])
                 self._stop_locked(oldest)
-            work = self._ensure_base() / ('ch%d' % index)
+            work = self._ensure_base() / ('ch%s' % key)
             shutil.rmtree(work, ignore_errors=True)
             work.mkdir(parents=True)
             args = [self.ffmpeg, '-hide_banner', '-loglevel', 'error', '-nostdin',
@@ -201,7 +201,7 @@ class Transcoders:
             log = open(str(work / 'ffmpeg.log'), 'ab')
             process = subprocess.Popen(args, stdout=log, stderr=log, stdin=subprocess.DEVNULL)
             entry = {'process': process, 'dir': work, 'last_used': time.time(), 'log': log}
-            self.active[index] = entry
+            self.active[key] = entry
             return entry
 
     def reap_idle(self):
@@ -313,16 +313,16 @@ class TVPlugin:
             return self.serve_playlists(handler)
         match = PLAY_PATH.match(path)
         if match:
-            return self.serve_channel(handler, int(match.group(1)))
+            return self.serve_channel(handler, int(match.group(1)), int(match.group(2) or 0))
         match = STREAM_PATH.match(path)
         if match:
             return self.serve_registered(handler, int(match.group(1)))
         match = TRANSCODE_PATH.match(path)
         if match:
-            return self.serve_transcode(handler, int(match.group(1)))
+            return self.serve_transcode(handler, int(match.group(1)), int(match.group(2) or 0))
         match = TSEG_PATH.match(path)
         if match:
-            return self.serve_transcode_segment(handler, int(match.group(1)), match.group(2))
+            return self.serve_transcode_segment(handler, match.group(1), match.group(2))
         return False
 
     def handle_post(self, handler):
@@ -355,6 +355,21 @@ class TVPlugin:
             handler.wfile.write(body)
         return True
 
+    def _playlist_url(self, name, host):
+        if self.public_base:
+            return self.public_base.rstrip('/') + '/' + name
+        return 'http://%s/%s' % (host or '127.0.0.1', name)
+
+    def _set_chain(self, url, host):
+        """Loaded set first, then the remaining aligned backup sets in order."""
+        set_names = [name for key, label, name in self.playlists if key.startswith('set')]
+        tail = url.rstrip('/').rsplit('/', 1)[-1].lower()
+        loaded = next((name for name in set_names if name.lower() == tail), None)
+        if loaded is None:
+            return [url]
+        ordered = [loaded] + [name for name in set_names if name != loaded]
+        return [self._playlist_url(name, host) for name in ordered]
+
     def serve_session_status(self, handler):
         if not self.authorized(handler):
             self.send_json(handler, {'ok': False}, 401)
@@ -363,9 +378,10 @@ class TVPlugin:
         if session:
             channels = [{'name': entry['name'], 'group': entry['group']} for entry in session['channels']]
             self.send_json(handler, {'ok': True, 'source': session['source'],
-                                     'count': len(channels), 'channels': channels})
+                                     'count': len(channels), 'channels': channels,
+                                     'sets': len(session.get('chain') or [session['source']])})
         else:
-            self.send_json(handler, {'ok': True, 'source': '', 'count': 0, 'channels': []})
+            self.send_json(handler, {'ok': True, 'source': '', 'count': 0, 'channels': [], 'sets': 1})
         return True
 
     def handle_login(self, handler):
@@ -405,19 +421,21 @@ class TVPlugin:
             self.send_json(handler, {'error': 'invalid_playlist', 'detail': str(error)[:200]}, 502)
             return True
         channels = [{'name': entry['name'], 'group': entry['group']} for entry in entries]
-        self.sessions.set_source(self.session_token(handler), url, entries)
-        self.send_json(handler, {'ok': True, 'count': len(entries), 'channels': channels})
+        chain = self._set_chain(url, handler.headers.get('Host'))
+        self.sessions.set_source(self.session_token(handler),
+                                 {'source': url, 'channels': entries, 'chain': chain,
+                                  'sets': {chain[0]: entries}})
+        self.send_json(handler, {'ok': True, 'count': len(entries), 'channels': channels,
+                                 'sets': len(chain)})
         return True
 
-    def serve_channel(self, handler, index):
+    def serve_channel(self, handler, index, slot=0):
         if not self.authorized(handler):
             self.send_json(handler, {'error': 'unauthorized'}, 401)
             return True
-        session = self.sessions.get(self.session_token(handler))
-        if not session or index < 0 or index >= len(session['channels']):
-            self.send_json(handler, {'error': 'channel_not_loaded'}, 404)
+        endpoint = self.resolve_channel(handler, index, slot)
+        if endpoint is None:
             return True
-        endpoint = session['channels'][index]['endpoint']
         return self.serve_url(handler, endpoint['url'], endpoint['headers'])
 
     def serve_registered(self, handler, rid):
@@ -433,26 +451,45 @@ class TVPlugin:
     def serve_playlists(self, handler):
         links = []
         for key, label, name in self.playlists:
-            if self.public_base:
-                url = self.public_base.rstrip('/') + '/' + name
-            else:
-                host = handler.headers.get('Host') or '127.0.0.1'
-                url = 'http://%s/%s' % (host, name)
-            links.append({'key': key, 'label': label, 'url': url})
+            links.append({'key': key, 'label': label,
+                          'url': self._playlist_url(name, handler.headers.get('Host'))})
         self.send_json(handler, {'ok': True, 'playlists': links})
         return True
 
-    def serve_transcode(self, handler, index):
-        if not self.authorized(handler):
-            self.send_json(handler, {'error': 'unauthorized'}, 401)
-            return True
+    def resolve_channel(self, handler, index, slot):
+        """Returns the endpoint for a channel, trying backup sets by slot."""
         session = self.sessions.get(self.session_token(handler))
         if not session or index < 0 or index >= len(session['channels']):
             self.send_json(handler, {'error': 'channel_not_loaded'}, 404)
+            return None
+        chain = session.get('chain') or [session['source']]
+        if slot < 0 or slot >= len(chain):
+            self.send_json(handler, {'error': 'channel_not_loaded'}, 404)
+            return None
+        entries = session['sets'].get(chain[slot])
+        if entries is None:
+            try:
+                _, _, data = fetch_upstream(chain[slot], {}, MAX_PLAYLIST_BYTES)
+                entries = parse_playlist(data.decode('utf-8', 'replace'))
+            except (URLError, OSError, ValueError, ssl.SSLError) as error:
+                self.send_json(handler, {'error': 'backup_fetch_failed', 'detail': str(error)[:200]}, 502)
+                return None
+            session['sets'][chain[slot]] = entries
+        if index >= len(entries):
+            self.send_json(handler, {'error': 'channel_not_loaded'}, 404)
+            return None
+        return entries[index]['endpoint']
+
+    def serve_transcode(self, handler, index, slot=0):
+        if not self.authorized(handler):
+            self.send_json(handler, {'error': 'unauthorized'}, 401)
             return True
-        endpoint = session['channels'][index]['endpoint']
+        endpoint = self.resolve_channel(handler, index, slot)
+        if endpoint is None:
+            return True
+        key = '%d-%d' % (index, slot)
         try:
-            entry = self.transcoders.start(index, endpoint['url'], endpoint['headers'])
+            entry = self.transcoders.start(key, endpoint['url'], endpoint['headers'])
         except OSError:
             self.send_json(handler, {'error': 'transcoder_unavailable'}, 503)
             return True
@@ -470,18 +507,18 @@ class TVPlugin:
         for raw in playlist.read_text(encoding='utf-8').splitlines():
             line = raw.strip()
             if line and not line.startswith('#'):
-                lines.append('/tv/tseg/%d/%s' % (index, line))
+                lines.append('/tv/tseg/%s/%s' % (key, line))
             else:
                 lines.append(raw)
         self.send_media(handler, 200, ('\n'.join(lines) + '\n').encode('utf-8'),
                         'application/vnd.apple.mpegurl; charset=utf-8')
         return True
 
-    def serve_transcode_segment(self, handler, index, name):
+    def serve_transcode_segment(self, handler, key, name):
         if not self.authorized(handler):
             self.send_json(handler, {'error': 'unauthorized'}, 401)
             return True
-        entry = self.transcoders.get(index)
+        entry = self.transcoders.get(key)
         if not entry or not SEGMENT_NAME.match(name):
             self.send_json(handler, {'error': 'unknown_stream'}, 404)
             return True

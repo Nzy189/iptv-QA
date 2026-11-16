@@ -12,8 +12,8 @@ Live progress: [main/PROGRESS.md](https://github.com/Nzy189/iptv-QA/blob/main/PR
 
 ## Latest work / 最近完成
 
-- **Web TV player implemented and deployed / 网页电视播放器已实现并部署**：`tv.py` + `webtv/`（内置 hls.js 1.7.4）挂载进仪表盘同进程，`/tv/` 密码门禁。功能：频道列表/搜索/上一台/下一台/随机/遥控器式台号输入/全屏/手机布局；源选择栏一键加载本页发布的 Set1/Set2/Set3/Top3，也可粘贴任意 m3u 链接。
-- 同源 HLS 代理（清单/分片/密钥/音轨全部改写，保留每频道 UA/Referer，仅代理已加载清单中的地址）；浏览器解不了编码或"有声音无画面"时自动按需 FFmpeg 转码（H.264/AAC、封顶 720p/2Mbps、最多 2 路、闲置 90 秒停止、`-nostdin` 修复了 stdin EOF 导致的转码进程自杀）；纯音频频道明确提示。
+- **Web TV player implemented and deployed / 网页电视播放器已实现并部署**：`tv.py` + `webtv/`（内置 hls.js 1.7.4）挂载进仪表盘同进程，`/tv/` 密码门禁。功能：频道列表/搜索/上一台/下一台/随机/遥控器式台号输入/全屏/手机布局；源选择栏一键加载本页发布的 Set1/Set2/Set3/Top3，也可粘贴任意 m3u 链接；频道失败自动按 Set1→Set2→Set3 换备用源，增强模式（随机按钮旁开关）10 秒无数据换套、全失败后随机跳台重试至可播（上限 15 次）。
+- 同源 HLS 代理（清单/分片/密钥/音轨全部改写，保留每频道 UA/Referer，仅代理已加载清单中的地址）；浏览器解不了编码或"有声音无画面"时自动按需 FFmpeg 转码（H.264/AAC、封顶 720p/2Mbps、最多 2 路、闲置 90 秒停止、`-nostdin` 修复了 stdin EOF 导致的转码进程自杀）；纯音频频道明确提示。备用链路按订阅链接末段文件名识别三套对齐清单。
 - 部署在生产面板 8088 端口（`/opt/iptv-checker`，密码经 `/etc/iptv-checker/tv.env`，不进仓库）；生产 `web.py` 已与公开版统一（单元文件显式传参，旧文件备份为 `web.py.before-tv`）。转码用 `/opt/iptv-checker/bin/ffmpeg`。
 - Redesigned both homepages as product introductions: clear value proposition, feature benefits, direct Top3/Top5 subscription links, backup sets, reports, quick start and documentation.
 - 首页提供可点击的示例输出。完整列表明确为 Top5，与 Top3 覆盖相同入选频道；原始未检测输入不作为精选文件展示。
@@ -44,7 +44,7 @@ Live progress: [main/PROGRESS.md](https://github.com/Nzy189/iptv-QA/blob/main/PR
 - Independent audio/video validation, A/V synchronization and receiver compatibility.
 - Longer checks for frequently watched Top1 sources and labelled playback comparisons.
 - Black/freeze/silence flags and confidence-aware historical ranking.
-- 播放器后续可选：失败自动切换 set2/set3 备用源；会话跨服务重启保持（当前重启需重新输密码）；转码档位/并发按实测调整。原始可行性研究：[English](docs/WEB_PLAYER_FEASIBILITY.md) · [中文](docs/WEB_PLAYER_FEASIBILITY.zh-CN.md)。
+- 播放器后续可选：会话跨服务重启保持（当前重启需重新输密码）；转码档位/并发按实测调整。原始可行性研究：[English](docs/WEB_PLAYER_FEASIBILITY.md) · [中文](docs/WEB_PLAYER_FEASIBILITY.zh-CN.md)。
 
 ## Capability boundary / 能力边界
 

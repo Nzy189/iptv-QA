@@ -23,6 +23,7 @@
   var prevBtn = document.getElementById('prev-btn');
   var nextBtn = document.getElementById('next-btn');
   var randomBtn = document.getElementById('random-btn');
+  var modeBtn = document.getElementById('mode-btn');
   var playBtn = document.getElementById('play-btn');
   var muteBtn = document.getElementById('mute-btn');
   var volumeInput = document.getElementById('volume');
@@ -31,7 +32,8 @@
   var channelBadge = document.getElementById('channel-badge');
 
   var state = { channels: [], current: -1, hls: null, numberBuffer: '', numberTimer: null,
-                transcoding: false, noVideoNotified: false };
+                transcoding: false, noVideoNotified: false, slot: 0, setCount: 1,
+                mode: localStorage.getItem('tv-mode') || 'normal', zapAttempts: 0, watchdog: null };
 
   function showLogin() {
     loginWrap.hidden = false;
@@ -105,12 +107,50 @@
     highlightChannel(state.current);
   }
 
+  function clearWatchdog() {
+    if (state.watchdog) { clearTimeout(state.watchdog); state.watchdog = null; }
+  }
+
+  function armWatchdog() {
+    clearWatchdog();
+    if (state.mode !== 'enhanced') return;
+    state.watchdog = setTimeout(function () {
+      if (video.buffered.length > 0 || video.readyState >= 2) return;
+      advanceAfterFailure('10 秒未加载');
+    }, 10000);
+  }
+
+  function advanceAfterFailure(reason) {
+    clearWatchdog();
+    if (state.slot + 1 < state.setCount) {
+      state.slot += 1;
+      state.transcoding = false;
+      if (state.hls) { state.hls.destroy(); state.hls = null; }
+      startPlayback(false);
+      return true;
+    }
+    if (state.mode === 'enhanced' && state.zapAttempts < 15 && channelCount() > 1) {
+      state.zapAttempts += 1;
+      var next = state.current;
+      while (next === state.current) next = Math.floor(Math.random() * channelCount());
+      showOverlay('增强模式：' + reason + '，自动换台寻找可用频道（第 ' + state.zapAttempts + ' 次）…');
+      play(next, true);
+      return true;
+    }
+    if (state.mode === 'enhanced' && state.zapAttempts >= 15) {
+      showError('已连续尝试 ' + state.zapAttempts + ' 个频道都无法播放，可手动换台或重试', true);
+      return true;
+    }
+    return false;
+  }
+
   function startPlayback(transcode) {
     state.transcoding = !!transcode;
     var index = state.current;
     if (transcode) showOverlay('该频道需要服务器转码，正在启动…（约 5 秒）');
+    else if (state.slot > 0) showOverlay('本套源失败，自动尝试备用源（' + (state.slot + 1) + '/' + state.setCount + '）…');
     else showOverlay('正在连接…');
-    var url = (transcode ? '/tv/transcode/' : '/tv/play/') + index;
+    var url = (transcode ? '/tv/transcode/' : '/tv/play/') + index + '/' + state.slot;
     if (window.Hls && Hls.isSupported()) {
       var hls = new Hls({
         enableWorker: false,
@@ -123,14 +163,17 @@
       state.hls = hls;
       hls.on(Hls.Events.ERROR, function (event, data) {
         if (!data.fatal) return;
-        if (window.Hls && data.type === Hls.ErrorTypes.MEDIA_ERROR && !state.transcoding) {
+        var isMedia = window.Hls && data.type === Hls.ErrorTypes.MEDIA_ERROR;
+        if (isMedia && !state.transcoding) {
           showOverlay('画面编码浏览器不支持，启动服务器转码…');
           if (state.hls) { state.hls.destroy(); state.hls = null; }
           startPlayback(true);
           return;
         }
+        if (advanceAfterFailure(data.details)) return;
         showError('频道播放失败（' + data.details + '），可换台或重试', true);
       });
+      hls.on(Hls.Events.FRAG_BUFFERED, clearWatchdog);
       hls.on(Hls.Events.MANIFEST_PARSED, function () {
         hideOverlay();
         video.play().catch(function () { showOverlay('浏览器限制自动播放，请点"播放"按钮'); });
@@ -144,20 +187,24 @@
         video.play().catch(function () { showOverlay('浏览器限制自动播放，请点"播放"按钮'); });
       }, { once: true });
       video.addEventListener('error', function () {
+        if (advanceAfterFailure('播放出错')) return;
         showError('频道播放失败，可换台或重试', true);
       }, { once: true });
     } else {
       showError('当前浏览器不支持 HLS 播放');
     }
+    armWatchdog();
   }
 
-  function play(index) {
+  function play(index, viaZap) {
     var n = channelCount();
     if (!n) return;
     var i = ((index % n) + n) % n;
     state.current = i;
     state.transcoding = false;
     state.noVideoNotified = false;
+    state.slot = 0;
+    if (!viaZap) state.zapAttempts = 0;
     var channel = state.channels[i];
     nowPlaying.textContent = (i + 1) + ' · ' + channel.name;
     channelBadge.textContent = (i + 1) + ' ' + channel.name;
@@ -237,6 +284,7 @@
           return;
         }
         state.channels = data.channels;
+        state.setCount = data.sets || 1;
         localStorage.setItem('tv-source', url);
         renderList();
         play(0);
@@ -261,6 +309,7 @@
       }).then(function (data) {
         if (data.ok && data.count > 0) {
           state.channels = data.channels;
+          state.setCount = data.sets || 1;
           sourceInput.value = data.source || sourceInput.value;
           renderList();
         }
@@ -317,6 +366,17 @@
   menuBtn.addEventListener('click', function () { sidebar.classList.toggle('open'); });
   prevBtn.addEventListener('click', prev);
   nextBtn.addEventListener('click', next);
+  function updateModeBtn() {
+    modeBtn.textContent = state.mode === 'enhanced' ? '增强模式' : '普通模式';
+    modeBtn.classList.toggle('enhanced', state.mode === 'enhanced');
+  }
+
+  modeBtn.addEventListener('click', function () {
+    state.mode = state.mode === 'enhanced' ? 'normal' : 'enhanced';
+    localStorage.setItem('tv-mode', state.mode);
+    state.zapAttempts = 0;
+    updateModeBtn();
+  });
   randomBtn.addEventListener('click', randomPlay);
   playBtn.addEventListener('click', togglePlay);
   muteBtn.addEventListener('click', toggleMute);
@@ -339,6 +399,7 @@
   });
   video.addEventListener('play', updatePlayBtn);
   video.addEventListener('pause', updatePlayBtn);
+  video.addEventListener('progress', clearWatchdog);
   document.addEventListener('keydown', onKey);
 
   setInterval(function () {
@@ -358,6 +419,7 @@
   renderPresets();
 
   if (!document.documentElement.requestFullscreen) fullscreenBtn.hidden = true;
+  updateModeBtn();
 
   var saved = localStorage.getItem('tv-source') || '';
   if (saved) sourceInput.value = saved;
@@ -368,6 +430,7 @@
       enterApp();
       if (data.ok && data.count > 0) {
         state.channels = data.channels;
+        state.setCount = data.sets || 1;
         sourceInput.value = data.source || saved;
         renderList();
         showOverlay('选择频道开始观看');

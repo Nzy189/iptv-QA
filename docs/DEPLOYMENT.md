@@ -105,6 +105,8 @@ Detailed runs default to 14 days of retention, while the current publication and
 
 The dashboard ships a password-gated web TV player at `/tv/`: after loading a playlist it offers a channel list with search, previous/next/random switching, remote-style number entry, fullscreen and a mobile layout. The source bar offers the published subscriptions shown on the dashboard (Set1/Set2/Set3/Top3) as one-click presets, and accepts any custom m3u URL.
 
+When a channel fails, the player automatically walks the backup sets **Set1 -> Set2 -> Set3** (the three sets share channel names and order; a source is recognised by the file name at the end of its URL). A mode switch next to the random button selects the failure policy: **normal mode** shows an error after every set failed, while **enhanced mode** additionally moves to the next set after 10 seconds without data and, once all sets failed, keeps zapping to random channels and retrying the whole chain (up to 15 times) until something plays.
+
 The server fetches playlists and proxies HLS manifests, segments, keys and audio tracks same-origin (honouring per-channel `User-Agent`/`Referer` options); browsers play through the vendored hls.js. **No transcoding by default**: only when the browser cannot decode the codec or a channel plays audio without video does the frontend request an on-demand server transcode (FFmpeg to H.264/AAC, capped at 720p/2 Mbps); at most 2 concurrent transcodes, idle ones stop after 90 seconds. Audio-only channels show an explicit "sound without picture" notice.
 
 Set the access password (the player stays disabled without it):

@@ -129,3 +129,7 @@ sudo systemctl start iptv-qa-sets.service     # split current Top5 without reche
 ```
 
 Detailed runs default to 14 days of retention, while the current publication and SQLite summaries persist. Back up private config and data independently. Read [PROGRESS](../PROGRESS.md) before upgrading a running deployment.
+
+## Tiered checking
+
+Use `validation_policy: "tiered-v1"`, `video_quality_enabled: true`, `deep_validation_enabled: true` and `browser_proxy_check: true`. Basic A/V checks admit current playable fallbacks; deep/reconnect success determines stable priority. `obs.publish_stable: true` optionally uploads the separate `iptv_stable.m3u` after a successful full run. Existing files are not reclassified merely by deploying code. The first policy migration skips incompatible channel-count comparison but retains zero-result and input-source guards; subsequent runs compare the same policy. Test in an isolated data directory first; retain the prior code/configuration for rollback. See [design](DESIGN.md#playback-tiers).

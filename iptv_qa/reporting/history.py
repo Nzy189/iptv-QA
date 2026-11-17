@@ -14,7 +14,8 @@ import uuid
 FILES = ('iptv_summary.html', 'iptv_history.csv', 'iptv_history.json')
 NUMBERS = ('unique_endpoints', 'tested_endpoints', 'probe_passed', 'decode_passed',
            'channels_total', 'channels_available', 'top3_entries', 'top5_entries',
-           'short_decode_passed', 'unverified_endpoints')
+           'short_decode_passed', 'unverified_endpoints', 'stable_endpoints',
+           'basic_endpoints', 'pending_review_endpoints', 'stable_channels', 'basic_channels', 'pending_review_channels')
 STATES = {'complete': '检测完成', 'upload_failed': '上传失败', 'failed': '检测失败',
           'publication_blocked': '保留上一版', 'interrupted': '运行中断'}
 OBS_STATES = {'uploaded': '已上传', 'failed': '上传失败', 'not_configured': '尚未配置',
@@ -29,7 +30,9 @@ ERRORS = {'timeout': '超时', 'access_denied': '拒绝访问', 'not_found': '�
           'insufficient_video': '有效视频帧或时长不足', 'stream_ended_early': '持续观察前直播结束',
           'not_deep_verified': '未通过两次深检', 'slow_video_delivery': '视频到达速度不足以连续播放',
           'hls_not_live': 'HLS 已结束或为点播', 'hls_not_advancing': 'HLS 直播分片不再更新',
-          'hls_manifest_unavailable': 'HLS 播放列表无法读取'}
+          'hls_manifest_unavailable': 'HLS 播放列表无法读取',
+          'audio_decode_failed': '音频解码未通过', 'proxy_delivery_failed': '网页代理取流未通过',
+          'proxy_invalid_playlist': '网页代理清单无效', 'proxy_empty_media': '网页代理取得空媒体'}
 
 
 def atomic(path, text):
@@ -102,6 +105,8 @@ def read_run(run_dir, active_id):
            'published': bool(report.get('published')),
            'obs_state': report.get('obs', {}).get('state', 'skipped'),
            'error_type': status.get('error_type', ''),
+           'validation_policy': report.get('validation_policy',
+               'strict-v1' if report.get('quality', {}).get('enabled') else 'legacy-short'),
            'sources': [{'name': s.get('name', ''), 'entries': number(s.get('entries'))}
                        for s in report.get('sources', [])],
            'errors': {k: number(v) for k, v in report.get('errors', {}).items() if k in ERRORS},
@@ -159,7 +164,7 @@ def collect(data_dir):
         row.update(channels_delta=None, top3_delta=None, top5_delta=None,
                    newly_available=[], no_longer_available=[], comparison_run_id=None)
         if row['has_statistics'] and row['channels_available'] is not None:
-            if previous:
+            if previous and row.get('validation_policy', 'legacy') == previous.get('validation_policy', 'legacy'):
                 row['comparison_run_id'] = previous['run_id']
                 for field, output in [('channels_available', 'channels_delta'), ('top3_entries', 'top3_delta'), ('top5_entries', 'top5_delta')]:
                     if row.get(field) is not None and previous.get(field) is not None:
@@ -187,7 +192,8 @@ def render_csv(rows):
     safe_row(['运行ID', '开始时间(迪拜UTC+4)', '结束时间(迪拜UTC+4)', '开始时间(北京UTC+8)',
                      '状态', '输入记录数', '去重地址', '探测通过', '解码通过', '未通过地址', '最终通过比例(%)',
                      '频道总数', '可用频道', '频道变化', 'Top5线路', 'Top5变化', 'Top3线路', 'Top3变化',
-                     '耗时(分钟)', 'OBS上传', '新增可用频道', '减少的可用频道', '失败阶段原因'])
+                     '耗时(分钟)', 'OBS上传', '检测策略', '稳定地址', '基础地址', '待复查地址',
+                     '新增可用频道', '减少的可用频道', '失败阶段原因'])
     for row in reversed(rows):
         source_total = sum(s['entries'] or 0 for s in row['sources']) if row['sources'] else None
         safe_row([row['run_id'], local_time(row['started_at']), local_time(row['finished_at']),
@@ -195,6 +201,8 @@ def render_csv(rows):
                          row['unique_endpoints'], row['probe_passed'], row['decode_passed'], row['failed_endpoints'], row['success_percent'],
                          row['channels_total'], row['channels_available'], row['channels_delta'], row['top5_entries'], row['top5_delta'],
                          row['top3_entries'], row['top3_delta'], row['duration_minutes'], OBS_STATES.get(row['obs_state'], '未知'),
+                         row.get('validation_policy', 'legacy'), row.get('stable_endpoints'),
+                         row.get('basic_endpoints'), row.get('pending_review_endpoints'),
                          '；'.join(row['newly_available']), '；'.join(row['no_longer_available']),
                          '；'.join('{}:{}'.format(ERRORS[k], v) for k, v in row['errors'].items())])
     # UTF-8 BOM makes the Chinese CSV open correctly in desktop spreadsheet apps.
@@ -216,6 +224,10 @@ def render_html(rows, generated_at, public_base=''):
     table = []
     for row in reversed(rows[-90:]):
         details = []
+        if row.get('validation_policy') == 'tiered-v1':
+            details.append('分层音视频检测：稳定优选 {} 条，基础可播 {} 条，待复查 {} 条；待复查仍有本轮短检成功证据，不等于失效。'.format(
+                shown(row.get('stable_endpoints')), shown(row.get('basic_endpoints')),
+                shown(row.get('pending_review_endpoints'))))
         if row['errors']:
             details.append('失败阶段：' + '、'.join('{} {}'.format(ERRORS[k], v) for k, v in row['errors'].items()))
         if row['newly_available']:
@@ -247,6 +259,8 @@ def render_html(rows, generated_at, public_base=''):
     links = [('iptv_summary.html', '最新报告'), ('iptv_ok.m3u', 'Top5 订阅'), ('iptv_top3.m3u', 'Top3 订阅'),
              ('iptv_set1.m3u', '第1套 · 主用'), ('iptv_set2.m3u', '第2套 · 备用'), ('iptv_set3.m3u', '第3套 · 备用'),
              ('iptv_english.m3u', '英语订阅'), ('iptv_history.csv', '下载 CSV'), ('iptv_history.json', 'JSON 历史')]
+    if any(r.get('published') and r.get('validation_policy') == 'tiered-v1' for r in rows):
+        links.append(('iptv_stable.m3u', '稳定精选'))
     nav = ''.join('<a href="{}">{}</a>'.format(esc(public_base.rstrip('/') + '/' + name if public_base else name), label) for name, label in links)
     sets_panel = ''
     if latest_full and latest_full.get('sets'):
@@ -261,12 +275,16 @@ def render_html(rows, generated_at, public_base=''):
             *[esc(shown(q[k])) for k in ('deep_tested', 'deep_passed', 'recheck_tested', 'verified_twice', 'deep_seconds')],
             esc(shown(round(q['recheck_interval_seconds'] / 60, 1) if q['recheck_interval_seconds'] is not None else None)),
             esc(shown(q['max_startup_seconds'])))
+    if latest_full and latest_full.get('validation_policy') == 'tiered-v1':
+        quality_panel += '<section class="card"><b>可播与稳定分层</b><p>稳定 {} 条 · 基础 {} 条 · 待复查 {} 条</p><small>待复查有本轮音视频短检成功证据，作为备用；下轮重新检测。稳定精选仅包含两次深检通过的源。</small></section>'.format(
+            esc(shown(latest_full.get('stable_endpoints'))), esc(shown(latest_full.get('basic_endpoints'))),
+            esc(shown(latest_full.get('pending_review_endpoints'))))
     if latest_full and latest_full.get('source_comparison'):
         c = latest_full['source_comparison']
         cells = ''.join('<tr><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td><td>{}</td></tr>'.format(
             esc(r['name']), esc(shown(r['candidate_addresses'])), esc(shown(r['passed_addresses'])),
             esc(shown(r['available_channels'])), esc(shown(r['top5_entries'])), esc(shown(r['top3_entries']))) for r in c['sources'])
-        comparison_panel = '<h2>来源横向对比</h2><p class="muted">重复频道 {} 个；新增可用频道 {} 个；新库优选线路胜出 {} 个频道；补齐原本失效频道 {} 个。</p><div class="table-wrap"><table><thead><tr><th>来源</th><th>候选地址</th><th>解码通过</th><th>可用频道</th><th>入选 Top5</th><th>入选 Top3</th></tr></thead><tbody>{}</tbody></table></div><small>同一线路来自多个来源时分别计入来源贡献。</small>'.format(
+        comparison_panel = '<h2>来源横向对比</h2><p class="muted">重复频道 {} 个；新增可用频道 {} 个；新库优选线路胜出 {} 个频道；补齐原本失效频道 {} 个。</p><div class="table-wrap"><table><thead><tr><th>来源</th><th>候选地址</th><th>本轮可播地址</th><th>可用频道</th><th>入选 Top5</th><th>入选 Top3</th></tr></thead><tbody>{}</tbody></table></div><small>同一线路来自多个来源时分别计入来源贡献。</small>'.format(
             esc(shown(c['overlap_channels'])), esc(shown(c['new_playable_channels'])), esc(shown(c['repository_best_channels'])), esc(shown(c['restored_channels'])), cells)
     return '''<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -274,13 +292,13 @@ def render_html(rows, generated_at, public_base=''):
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f4f6fa;color:#18243a;font-family:system-ui,-apple-system,"Microsoft YaHei",sans-serif;font-size:15px;line-height:1.6}main{max-width:1320px;margin:auto;padding:36px 24px}h1{margin:0;font-size:30px}h2{font-size:20px;margin:30px 0 14px}.muted,small{color:#63738a}small{display:block;font-size:12px}.top{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}a{color:#155acc;text-decoration:none}nav{display:flex;gap:12px;flex-wrap:wrap}nav a{background:white;border:1px solid #d9e1ee;padding:8px 12px;border-radius:8px}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:24px}.card{background:white;padding:20px;border-radius:12px;border:1px solid #e2e7ef}.card strong{display:block;font-size:34px;margin:5px 0}.table-wrap{overflow:auto;background:white;border:1px solid #e2e7ef;border-radius:12px}table{border-collapse:collapse;width:100%;white-space:nowrap;text-align:left}th,td{padding:12px 14px;border-bottom:1px solid #edf0f5}th{font-weight:600;font-size:13px;color:#63738a;background:#fbfcfe}.badge{padding:3px 8px;border-radius:5px;font-size:12px}.ok{background:#e1f4e8;color:#176937}.warn{background:#fff0da;color:#8b5200}.detail td{padding:0 14px 10px}.detail details{white-space:normal;font-size:13px;color:#63738a}.detail p{margin:6px 0;overflow-wrap:anywhere}.detail summary{cursor:pointer}.notice{padding:12px;background:#fff0da;border-radius:8px}.foot{font-size:13px;margin-top:18px;color:#63738a}@media(max-width:760px){main{padding:24px 14px}.cards{grid-template-columns:repeat(2,1fr)}.card{padding:14px}.card strong{font-size:27px}}
 </style></head><body><main>
-<div class="top"><div><h1>IPTV 检测汇总</h1><div class="muted">每周日、一、三检测 · 自动生成 Top5 / Top3 · 覆盖 OBS 订阅</div></div>
+<div class="top"><div><h1>IPTV 检测汇总</h1><div class="muted">按定时计划检测 · 自动生成 Top5 / Top3 · 覆盖 OBS 订阅</div></div>
 <nav>''' + nav + '''</nav></div>
 <p class="muted">最近一轮：''' + esc(latest_status) + '''</p>''' + latest_note + '''
 <section class="cards">''' + ''.join(cards) + '''</section>''' + sets_panel + quality_panel + '''
 ''' + comparison_panel + '''<h2>历次检测 <small>页面展示最近 90 次；CSV 和 JSON 包含全部汇总记录。时间为迪拜 UTC+4。</small></h2>
-<div class="table-wrap"><table><thead><tr><th>检测开始</th><th>检测地址</th><th>解码通过</th><th>未通过地址</th><th>可用频道</th><th>频道变化</th><th>Top5</th><th>Top3</th><th>分钟</th><th>状态 / OBS</th></tr></thead><tbody>''' + ''.join(table) + '''</tbody></table></div>
-<p class="foot">每周日、周一、周三迪拜 04:00（北京 08:00）开始，检测结束后更新。最终通过比例 = 完整验证通过地址 / 本轮检测地址；短检通过但未参加完整复检的地址不计为失效。失败原因按检测阶段记录统计；增减对比上一次完成统计的检测。失败或中断时未知指标显示“—”。详细日志保留 14 天，汇总长期保留。</p>
+<div class="table-wrap"><table><thead><tr><th>检测开始</th><th>检测地址</th><th>本轮可播地址</th><th>未通过地址</th><th>可用频道</th><th>频道变化</th><th>Top5</th><th>Top3</th><th>分钟</th><th>状态 / OBS</th></tr></thead><tbody>''' + ''.join(table) + '''</tbody></table></div>
+<p class="foot">按服务器定时计划执行，检测结束后更新。分层策略的可播地址包含稳定优选、基础可播和待复查；旧策略为严格深检口径，不同策略不计算增减。失败原因按检测阶段记录统计；增减对比上一次完成统计的检测。失败或中断时未知指标显示“—”。详细日志保留 14 天，汇总长期保留。</p>
 <p class="foot">汇总生成：''' + esc(local_time(generated_at)) + '''（迪拜） / ''' + esc(local_time(generated_at, 8)) + '''（北京）。报告随检测自动更新；点击上方“最新报告”获取最新文件。</p>
 </main></body></html>'''
 

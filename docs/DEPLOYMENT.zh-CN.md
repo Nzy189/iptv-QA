@@ -129,3 +129,7 @@ sudo systemctl start iptv-qa-sets.service
 ```
 
 详细记录默认保留十四天，当前发布版本和 SQLite 汇总长期保留。私有配置及运行数据单独备份。升级前先读 [PROGRESS](../PROGRESS.md)。
+
+## 分层检测
+
+设置 `validation_policy: "tiered-v1"`、`video_quality_enabled: true`、`deep_validation_enabled: true` 和 `browser_proxy_check: true`。本轮基础音视频检查通过即可作为备用；深检与复检成功决定稳定优先级。`obs.publish_stable: true` 可在完整成功检测后上传独立 `iptv_stable.m3u`。部署代码本身不会把旧订阅重新判定为新结果。首次策略迁移跳过不可比的频道数比较，保留零结果和来源缩水保护，后续按同策略比较。先在隔离数据目录验证，并保留旧代码和配置供回退。详见[检测设计](DESIGN.zh-CN.md#可播与稳定分层)。

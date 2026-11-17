@@ -135,7 +135,7 @@ def probe(ep, ua, cfg):
              and not s.get('disposition', {}).get('attached_pic')]
     audio = [s for s in streams if s.get('codec_type') == 'audio']
     fmt = info.get('format', {})
-    record.update(format=fmt.get('format_name', ''), duration=fmt.get('duration'),
+    record.update(has_audio=bool(audio), format=fmt.get('format_name', ''), duration=fmt.get('duration'),
                   audio_only=bool(audio and not video))
     if video:
         record.update(width=video[0]['width'], height=video[0]['height'], codec=video[0].get('codec_name'),
@@ -154,6 +154,25 @@ def probe(ep, ua, cfg):
 
 
 def decode(ep, probe_record, ua, cfg):
+    from iptv_qa.detection import tiers
+    if tiers.enabled(cfg):
+        result = check_video(ep, probe_record, ua, cfg)
+        if not result['ok']:
+            return result
+        audio = tiers.check_audio(ep, ua, cfg, run_tool, input_args)
+        result['audio_check'] = audio
+        if not audio['ok']:
+            result.update(ok=False, error='audio_decode_failed')
+            return result
+        if cfg.get('browser_proxy_check', True) and set(probe_record.get('format', '').split(',')) & {'hls', 'applehttp'}:
+            try:
+                delivery = tiers.check_proxy(ep, ua)
+            except Exception:
+                delivery = {'ok': False, 'error': 'proxy_delivery_failed'}
+            result['proxy_check'] = delivery
+            if not delivery['ok']:
+                result.update(ok=False, error=delivery['error'])
+        return result
     if cfg.get('video_quality_enabled', False):
         return check_video(ep, probe_record, ua, cfg)
     target = cfg.get('decode_seconds', 4)
@@ -219,8 +238,12 @@ def check_video(ep, probe_record, ua, cfg, deep=False):
     args += ['-map', mapping, '-an', '-sn', '-dn', '-threads', '1', '-fps_mode', 'passthrough',
              '-stats_period', '0.25', '-progress', 'pipe:1', '-nostats', '-f', 'null', '-']
     timeout = max(cfg.get('deep_timeout', 90), target + cfg.get('max_startup_seconds', 12) + 15) if deep else cfg.get('decode_timeout', 40)
+    from iptv_qa.detection import tiers
+    basic = tiers.enabled(cfg) and not deep
+    if basic:
+        args.remove('-xerror')
     result = observe_video(args, timeout,
-                           target, cfg.get('max_startup_seconds', 12), cfg.get('max_stall_seconds', 8),
+                           target, (cfg.get('decode_timeout', 40) if basic else cfg.get('max_startup_seconds', 12)), cfg.get('max_stall_seconds', 8),
                            wall_window=target if deep else 0)
     if result['ok'] and hls is not None:
         try:
@@ -329,7 +352,8 @@ def choose_lines(entries, probes, decodes, reliability, limit):
         # Check duration is measured end-to-end, not mislabelled as startup latency.
         startup = dec.get('first_frame_seconds')
         # Slow starts must not win simply because a source advertises 1080p.
-        return (dec.get('startup_class') == 'slow',
+        return (0 if dec.get('validation_tier') == 'stable' else 1,
+                dec.get('startup_class') == 'slow',
                 bool(dec.get('retried') or pr.get('retried')),
                 -reliability.get(identity, 0),
                 round(startup / 2) if startup is not None else 999,
@@ -347,21 +371,27 @@ def choose_lines(entries, probes, decodes, reliability, limit):
             requests.add(signature)
     eligible = unique
     selected, hosts = [], set()
-    for entry in eligible:
-        host = entry['endpoint']['host']
-        if host not in hosts and len(selected) < limit:
-            selected.append(entry)
-            hosts.add(host)
-    for entry in eligible:
-        if len(selected) == limit:
-            break
-        if entry not in selected:
-            selected.append(entry)
+    pools = ([e for e in eligible if decodes[e['endpoint']['id']].get('validation_tier') == 'stable'],
+             [e for e in eligible if decodes[e['endpoint']['id']].get('validation_tier') != 'stable'])
+    for pool in pools:
+        for entry in pool:
+            host = entry['endpoint']['host']
+            if host not in hosts and len(selected) < limit:
+                selected.append(entry)
+                hosts.add(host)
+        for entry in pool:
+            if len(selected) == limit:
+                break
+            if entry not in selected:
+                selected.append(entry)
+
     return selected
 
 
 def validate_candidates(channels, endpoints, probes, decodes, reliability, ua, cfg, run_dir, status):
-    """Deep-test candidates, then require a separate successful connection before publication."""
+    """Deep-test/reconnect for stability; tiered mode preserves basic fallbacks."""
+    from iptv_qa.detection import tiers
+    basic_records = {i: dict(r) for i, r in decodes.items()}
     checked, first_checks = set(), {}
     limit = cfg.get('deep_candidates_per_channel', 10)
     round_number = 0
@@ -425,10 +455,13 @@ def validate_candidates(channels, endpoints, probes, decodes, reliability, ua, c
                 result['verified_twice'] = bool(result['ok'])
                 decodes[identity] = result
             second_checks.update(records)
-    # Untested and one-pass-only candidates can never leak into published Top5.
+    # Strict mode requires two passes; tiered mode restores basic evidence below.
     for identity, result in decodes.items():
         if result['ok'] and not second_checks.get(identity, {}).get('ok'):
             result.update(ok=False, error='not_deep_verified')
+    if tiers.enabled(cfg):
+        for identity in list(decodes):
+            decodes[identity] = tiers.classify(basic_records[identity], decodes[identity])
     errors = collections.Counter(r['error'] for r in list(first_checks.values()) + list(second_checks.values()) if not r['ok'])
     return {'enabled': True, 'deep_tested': len(first_checks), 'deep_passed': len(survivors),
             'recheck_tested': len(second_checks), 'verified_twice': sum(r['ok'] for r in second_checks.values()),
@@ -634,7 +667,7 @@ def publish_local(data_dir, export_dir):
                              ('iptv_top5.m3u', 'iptv_top5.m3u'),
                              ('iptv_ok.m3u', 'iptv_top5.m3u'), ('report.json', 'report.json'),
                              ('iptv_set1.m3u', 'iptv_set1.m3u'), ('iptv_set2.m3u', 'iptv_set2.m3u'),
-                             ('iptv_set3.m3u', 'iptv_set3.m3u')):
+                             ('iptv_set3.m3u', 'iptv_set3.m3u'), ('iptv_stable.m3u', 'iptv_stable.m3u')):
         if not (export_dir / target).is_file():
             continue
         link = published / filename
@@ -720,6 +753,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
     cfg = json.loads(Path(args.config).read_text(encoding='utf-8'))
+    policy = cfg.get('validation_policy', 'strict-v1')
+    if policy not in ('strict-v1', 'tiered-v1'):
+        raise ValueError('Unknown validation_policy')
+    if policy == 'tiered-v1' and not (cfg.get('deep_validation_enabled') and cfg.get('video_quality_enabled')):
+        raise ValueError('tiered-v1 requires video_quality_enabled and deep_validation_enabled')
     if not cfg.get('sources') or any(not re.match(r'^[A-Za-z0-9_-]+$', s['name']) for s in cfg['sources']):
         raise ValueError('Configure named playlist sources')
     for tool in ('ffmpeg', 'ffprobe'):
@@ -887,7 +925,8 @@ def main(argv=None):
             history = History(data_dir / 'history.sqlite3')
             try:
                 reliability = history.record({ep['id']: bool(decodes.get(ep['id'], {}).get('ok')) for ep in eps
-                                              if decodes.get(ep['id'], {}).get('error') != 'not_deep_verified'})
+                                              if decodes.get(ep['id'], {}).get('error') != 'not_deep_verified'
+                                              and decodes.get(ep['id'], {}).get('validation_tier') not in ('basic', 'pending_review')})
             finally:
                 history.close()
         outputs, stats = render_playlists(channels, probes, decodes, reliability, cfg.get('epg_url', ''))
@@ -904,6 +943,12 @@ def main(argv=None):
                       international_news=news_summary,
                       concurrency={key: cfg.get(key) for key in ('probe_workers', 'probe_per_host', 'probe_retry_workers',
                                    'probe_retry_per_host', 'decode_workers', 'decode_per_host', 'decode_retry_workers', 'decode_retry_per_host')})
+        from iptv_qa.detection import tiers
+        report['validation_policy'] = cfg.get('validation_policy', 'strict-v1')
+        report['basic_check_settings'] = dict(decode_seconds=cfg.get('decode_seconds', 4),
+            decode_timeout=cfg.get('decode_timeout', 40), browser_proxy_check=cfg.get('browser_proxy_check', True))
+        if tiers.enabled(cfg):
+            report.update(tiers.summary(channels, decodes))
         report['source_comparison'] = source_comparison(channels, endpoints, decodes, outputs)
         # Top5 stays QA-only; the curated group joins Top3 and the three sets.
         outputs[3] = append_group(outputs[3], news_lines)
@@ -911,6 +956,10 @@ def main(argv=None):
             set_files[filename] = append_group(set_files[filename], news_lines)
         export_dir = run_dir / 'export'
         export_dir.mkdir()
+        if tiers.enabled(cfg):
+            stable_records = {i: dict(r, ok=r.get('validation_tier') == 'stable') for i, r in decodes.items()}
+            stable_outputs, _ = render_playlists(channels, probes, stable_records, reliability, cfg.get('epg_url', ''))
+            atomic_text(export_dir / 'iptv_stable.m3u', stable_outputs[3])
         for count, text in outputs.items():
             atomic_text(export_dir / 'iptv_top{}.m3u'.format(count), text)
         for filename, text in set_files.items():
@@ -920,6 +969,9 @@ def main(argv=None):
         if prior_report.exists():
             prior = json.loads(prior_report.read_text(encoding='utf-8'))
         baseline = video_publication_baseline(data_dir, prior) if cfg.get('deep_validation_enabled') else prior
+        if tiers.enabled(cfg):
+            baseline, comparison = tiers.comparable_baseline(report, baseline)
+            report['publication_baseline_comparison'] = comparison
         report['publication_baseline_channels'] = baseline.get('channels_available')
         reason = 'Diagnostic samples do not publish' if args.limit else publish_guard(stats, baseline, source_stats, cfg.get('minimum_publish_ratio', 0.5))
         report['publication_blocked_reason'] = reason

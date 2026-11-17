@@ -31,7 +31,8 @@ def validate(bin_dir="/usr/bin"):
         subprocess.check_call([cfg['ffmpeg'], '-v', 'error', '-f', 'lavfi', '-i', 'sine=frequency=500',
                                '-t', '8', '-c:a', 'aac', '-f', 'mpegts', str(root / 'audio.ts')])
         producer = subprocess.Popen([cfg['ffmpeg'], '-v', 'error', '-re', '-f', 'lavfi', '-i',
-                                     'testsrc=size=160x90:rate=10', '-t', '180', '-threads', '1',
+                                     'testsrc=size=160x90:rate=10', '-f', 'lavfi', '-i', 'sine=frequency=600',
+                                     '-t', '180', '-c:a', 'aac', '-threads', '1',
                                      '-c:v', 'mpeg2video', '-g', '10', '-f', 'hls', '-hls_time', '1',
                                      '-hls_list_size', '5', '-hls_flags', 'delete_segments+temp_file', str(root / 'live.m3u8')],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
@@ -75,6 +76,26 @@ def validate(bin_dir="/usr/bin"):
             published = (root/'data/published/iptv_top5.m3u').read_text()
             assert 'Audio' not in published and 'CoverRadio' not in published and 'TestTV' in published
             assert report['sources'][0]['excluded_radio_entries'] == 1, report
+            # Tiered mode additionally requires independent audio decode and
+            # successful retrieval through browser-proxy URL rewriting.
+            from iptv_qa.detection import tiers
+            tier_cfg = dict(cfg, validation_policy='tiered-v1', browser_proxy_check=True,
+                            data_dir=str(root / 'tiered-data'))
+            app.write_json(root / 'tiered-config.json', tier_cfg)
+            assert app.main(['--config', str(root / 'tiered-config.json')]) == 0
+            tier_report = json.loads((root/'tiered-data/published/report.json').read_text())
+            assert tier_report['stable_endpoints'] == 1, tier_report
+            assert tier_report['validation_policy'] == 'tiered-v1', tier_report
+            assert 'TestTV' in (root/'tiered-data/published/iptv_stable.m3u').read_text()
+            # A video-only source cannot pass basic A/V checks.
+            muted = subprocess.run([cfg['ffmpeg'], '-v', 'error', '-f', 'lavfi', '-i',
+                'testsrc=size=160x90:rate=10', '-t', '6', '-threads', '1', '-c:v',
+                'mpeg2video', '-f', 'mpegts', str(root/'muted.ts')])
+            assert muted.returncode == 0
+            muted_ep = app.endpoint(origin + '/muted.ts', [])
+            muted_probe = app.probe(muted_ep, app.UA, tier_cfg)
+            muted_result = app.decode(muted_ep, muted_probe, app.UA, tier_cfg)
+            assert not muted_result['ok'] and muted_result['error'] == 'audio_decode_failed', muted_result
             print('REAL_QUALITY_VALIDATION_OK', json.dumps({'audio_rejected': True,
                   'first_frame_seconds': short['first_frame_seconds'], 'deep_observed_seconds': deep['observed_seconds'],
                   'video_frames': deep['frames'], 'radio_with_video_excluded': True,

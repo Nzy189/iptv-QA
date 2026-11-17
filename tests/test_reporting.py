@@ -53,6 +53,20 @@ class ReportingTests(unittest.TestCase):
             (export / 'iptv_top5.m3u').write_text('#EXTM3U\n' + ''.join('#EXTINF:-1,{}\nhttp://private.test/live?password=DO_NOT_PUBLISH\n'.format(n) for n in names), encoding='utf-8')
         return run
 
+    def test_different_validation_policies_do_not_report_channel_loss(self):
+        with tempfile.TemporaryDirectory(dir=os.environ.get('IPTV_TEST_TMPDIR')) as temp:
+            data = Path(temp)
+            self.make_run(data, '20261114T210000Z-11111111', ['A', 'B'])
+            latest = self.make_run(data, '20261115T000000Z-22222222', ['B'])
+            report_path = latest / 'export/report.json'
+            report = json.loads(report_path.read_text(encoding='utf-8'))
+            report['quality'] = {'enabled': True}
+            report_path.write_text(json.dumps(report), encoding='utf-8')
+            rows = reporting.collect(data)
+            self.assertEqual(rows[-1]['validation_policy'], 'strict-v1')
+            self.assertIsNone(rows[-1]['channels_delta'])
+            self.assertEqual(rows[-1]['no_longer_available'], [])
+
     def test_backfill_differences_and_history_survives_removed_run_directory(self):
         with tempfile.TemporaryDirectory(dir=os.environ.get('IPTV_TEST_TMPDIR')) as temp:
             data = Path(temp)

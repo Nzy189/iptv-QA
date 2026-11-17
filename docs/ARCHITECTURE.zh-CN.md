@@ -70,3 +70,5 @@ tests/                   # behavior and module-boundary regressions
 简单部署可共用一个 HTTP 进程；也可把报告和放映拆成独立进程、端口与资源限制。二者读取完成后的发布文件即可，无需重跑检测。详见[部署](DEPLOYMENT.zh-CN.md)、[放映](PLAYBACK.zh-CN.md)、[检测规则](DESIGN.zh-CN.md)和[进度](../PROGRESS.md)。
 
 本次整理保留检测策略和播放器接口，不代表已替换现有服务器程序。完整音画双检、按终端衡量播放成功率仍属于后续计划。
+
+分层检测在 `detection/tiers.py` 中分开保存基础音视频证据与深检稳定性。选中 HLS 路径复用播放代理函数验证交付，不启动播放器 HTTP 服务；纯稳定清单是独立发布产物。

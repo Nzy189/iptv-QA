@@ -31,6 +31,8 @@
   "probe_timeout": 25,
   "decode_timeout": 40,
   "decode_seconds": 4,
+  "validation_policy": "tiered-v1",
+  "browser_proxy_check": true,
   "require_video": true,
   "video_quality_enabled": true,
   "deep_validation_enabled": true,
@@ -58,6 +60,7 @@
     "prefix": "iptv",
     "upload_report": false,
     "publish_sets": true,
+    "publish_stable": true,
     "object_names": {
       "iptv_top5.m3u": "iptv_ok.m3u",
       "iptv_top3.m3u": "iptv_top3.m3u"

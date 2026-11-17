@@ -37,6 +37,7 @@ def publish_obs(export_dir, obs, filenames=None):
     if filenames is None:
         filenames = (tuple(obs['playlist_files']) if obs.get('playlist_files') else ('iptv_top5.m3u', 'iptv_top3.m3u')
                      + (('iptv_set1.m3u', 'iptv_set2.m3u', 'iptv_set3.m3u') if obs.get('publish_sets') else ())
+                     + (('iptv_stable.m3u',) if obs.get('publish_stable') and (export_dir / 'iptv_stable.m3u').is_file() else ())
                      + (('report.json',) if obs.get('upload_report', True) else ()))
     names = obs.get('object_names', {})
     if any(not re.match(r'^[A-Za-z0-9_.-]+$', names.get(filename, filename)) for filename in filenames):

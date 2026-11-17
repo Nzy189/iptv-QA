@@ -22,6 +22,8 @@ iptv-QA collects, deduplicates and tests IPTV sources, then turns them into rank
 
 Run it on your own server, import the output into your M3U player or use built-in browser playback, and let scheduled jobs keep the results updated.
 
+Tiered checking separates current A/V playback from long-term stability: Top3/Top5/sets prefer twice-verified sources and retain basic playable fallbacks; `iptv_stable.m3u` is stable-only. See [validation tiers](docs/DESIGN.md#playback-tiers).
+
 ## Why iptv-QA?
 
 | Benefit | What you get |
@@ -68,7 +70,7 @@ These links serve the last published snapshot and may lag behind the current QA 
 
 **Collect → Deduplicate → Probe → Decode → Observe → Reconnect → Rank → Publish**
 
-Shortlisted sources are observed for at least 30 seconds of both video progression and wall time, then checked again through a new connection after at least 30 minutes. HLS checks look for ongoing playlist updates. Only candidates passing both deep checks can enter the ranked output.
+Shortlisted sources are observed for at least 30 seconds of both video progression and wall time, then checked again through a new connection after at least 30 minutes. HLS checks look for ongoing playlist updates. Candidates passing both deep checks form the stable tier. In tiered mode, current basic A/V passes can remain as lower-priority fallbacks; strict mode requires both deep checks for all published entries.
 
 Publication guards retain the previous result when a run produces zero usable channels or an unexpected drop. See [the design](docs/DESIGN.md) for the full rules and tuning options.
 

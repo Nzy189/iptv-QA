@@ -70,3 +70,5 @@ The configured data directory owns catalogue caches, runs, SQLite history, `publ
 Use one combined HTTP service for a simple installation, or independent dashboard and player processes/ports for separate failure and resource boundaries. Both can read the same completed publication; neither needs to rerun QA. See [deployment](DEPLOYMENT.md), [playback](PLAYBACK.md), [detection rules](DESIGN.md) and [progress](../PROGRESS.md).
 
 This refactor preserves QA policy and the existing player protocol. It does not imply deployment to an already running server. Full audio/video QA and receiver-specific success scoring remain roadmap work.
+
+Tiered detection keeps basic A/V evidence separate from deep stability outcomes in `detection/tiers.py`. Playback proxy helpers validate selected HLS delivery paths; detection does not start the player HTTP service. The optional stable-only playlist is a separate publication artifact.

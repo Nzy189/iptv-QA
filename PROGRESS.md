@@ -1,6 +1,6 @@
 # Project progress / 项目进度
 
-**Updated / 更新：2026-11-16。Read this first / 每次续接先读本文件。** Private installation details belong in ignored `.local-context.md`.
+**Updated / 更新：2026-11-17。Read this first / 每次续接先读本文件。** Private installation details belong in ignored `.local-context.md`.
 
 ## Current work / 当前工作
 
@@ -14,6 +14,8 @@ Review / 审阅：[PR #1](https://github.com/Nzy189/iptv-QA/pull/1) 已合并。
 - Playback / 放映：proxy, sessions/registry, transcoding and service are split; assets are packaged. Standalone player mode, adjustable transcode concurrency/idle limits and shutdown cleanup added. Combined or separate HTTP service templates are available.
 - Documentation / 文档：paired architecture and playback guides; README presents the major modules; detection/deployment guides are targeted; research is marked historical and roadmap contradictions removed.
 - Curated group / 精选分组：optional `international_news` config appends a curated M3U as one group (default title `International News`) to Top3 and the three sets, including the English Top3, never to Top5. Entries bypass QA validation; a missing file only warns and publication continues. Implemented, tested and deployed to the owner's private production host on 2026-11-16: the published Top3 and three sets now carry the 14-entry group, Top5 stays QA-only. / 已实现、测试并部署到私有生产主机：Top3 与三套已带 14 条精选分组，Top5 保持纯质检输出。
+
+- Tiered validation / 分层检测：`tiered-v1` separates current A/V playback from two-connection stability, exports a stable-only list and labels transient failures as pending review; deployed to the private installation after isolated tests. See the dated evidence below. / 已在隔离验证后部署分层策略，区分可播与稳定，另出稳定清单，瞬时失败标为待复查；详见下方记录。
 
 ## Verification / 验证证据
 
@@ -34,7 +36,7 @@ Review / 审阅：[PR #1](https://github.com/Nzy189/iptv-QA/pull/1) 已合并。
 
 ## Remaining product work / 后续能力
 
-Separate audio/video QA, A/V synchronization, black/freeze/silence review, receiver comparisons and longer frequently watched Top1 checks remain plans. The browser player is already implemented; restart persistence and further compatibility improvements remain optional work. See [roadmap](ROADMAP.md).
+Full audio/video quality analysis, A/V synchronization, black/freeze/silence review, receiver comparisons and longer frequently watched Top1 checks remain plans. The browser player is already implemented; restart persistence and further compatibility improvements remain optional work. See [roadmap](ROADMAP.md).
 
 ## Local news shortlist research / 本地新闻精选研究（2026-11-16）
 
@@ -60,3 +62,13 @@ Separate audio/video QA, A/V synchronization, black/freeze/silence review, recei
 - Fixed / 修复：upstream retrieval returns the final response URL and the playback proxy uses it for all playlist URI rewriting. Added HTTP regression coverage for multi-hop master redirects, media redirects, segments with query strings, keys, init files, audio playlists and User-Agent preservation. Paired playback guides explain the behavior.
 - Verified / 验证：`python -m unittest discover -s tests -v` ran 95 tests on Windows (85 passed, 10 platform skips) and all 95 passed in an isolated Linux/Python 3.6.8 checkout. `python scripts/check_publication.py` passed. Minimal compatible fix deployed to the existing private web service after isolated checks and backup; actual authenticated HTTP playback routes returned segments that decoded successfully for three sampled channels. This verifies proxy delivery, not visual playback on the user's browser. / Windows 95项中85通过、10项平台跳过；隔离Linux环境95项全过；发布审计通过。备份后将最小修复部署到私有网页服务，三个样本均通过实际认证HTTP接口取得分片并解码；尚未验证用户浏览器实际画面。
 - Scope / 范围：checker rules and publication contents were not changed. The detection HLS observer already uses the final response URL; sampled recent failures were startup timeout and deep media error, not this proxy path bug. / 未改检测标准或订阅内容；检测器HLS观察器已使用最终响应地址，样本近期淘汰原因为起播超时和深检媒体错误。
+
+## Tiered A/V validation / 分层音视频检测（2026-11-17）
+
+- Implemented / 已实现：opt-in `validation_policy: tiered-v1` (enabled in example config) distinguishes stable, basic and pending-review evidence. Stable means two deep connections; transient deep/reconnect failures retain current basic A/V evidence as lower-priority fallbacks. Hard failures and historical-only successes cannot qualify. Basic video uses the bounded decode timeout and tolerates recoverable decoder errors; strict deep limits remain unchanged.
+- Audio/proxy / 音频与代理：basic checks independently decode audio and video, then verify a selected HLS delivery path with the same final-URL rewriting helpers as browser playback. This does not certify every rendition, codec, silence, A/V sync or receiver experience. / 基础检查分别实际解码音视频，并验证选中HLS路径的代理交付；不代表所有分支、设备、静音或音画同步均通过。
+- Output / 输出：Top3/Top5/sets prefer stable sources and retain current playable fallbacks; separate `iptv_stable.m3u` contains only twice-verified sources. Optional `obs.publish_stable` uploads it after successful publication. Reports/CSV/JSON expose tier counts and policy; unlike policies do not generate channel deltas. / 主订阅稳定优先并保留基础备用，独立稳定清单仅含两次验证通过者；报告区分口径和等级。
+- Safety / 保护：channel-count guard compares matching policy/basic-check settings only. First incompatible migration explicitly records skipped channel comparison; zero-result and input-source shrink protections remain. Subsequent same-policy runs restore count comparison. / 首次不可比迁移明确记录不比较频道数，仍保留零结果和来源缩水保护，后续按同口径比较。
+- Verified / 已验证：Windows `python -m unittest discover -s tests -v`: 106 tests, 96 passed / 10 platform skips. Isolated Linux/Python 3.6.8: all 106 passed. `scripts/validate_media.py` passed; extended `scripts/validate_quality.py` passed strict and tiered real-A/V publication, independent audio rejection and proxy delivery fixtures. Wheel build and `scripts/validate_package.py` passed; publication/source archive audit passed.
+- Live scope / 实源范围：a three-source isolated smoke attempt failed upstream probing; minimal legacy-style FFmpeg requests also failed/timed out during that interval. It did not change production publication. Do not claim live source or receiver success from fixture results. / 三源隔离实测期间上游探测失败，旧式最简解码也失败或超时；未更换生产订阅，不将夹具通过等同实源或终端成功。
+- Deployed / 已部署：activated the tested module package in the private installation, with backed-up entry points/configuration and rollback retained. Verified the service user configuration check, actual module imports, HTTP health/player assets/login, and loading the unchanged current Set1. Daily schedule and production 1800-second reconnect interval remain intact; new subscriptions await the next successful full run. / 已在私有安装激活完整模块包，保留入口与配置回退；服务用户配置检查、实际模块、HTTP健康与登录、现有Set1载入均已验证。每日调度和生产1800秒复检间隔保持；新订阅待下轮完整成功检测后生成。

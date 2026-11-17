@@ -33,3 +33,7 @@ GitHub Actions 在 Linux 上验证 Python 3.10、3.12、3.14，真实媒体样�
 ## Module and package validation / 模块与打包验证
 
 模块回归另见 `tests/test_modules.py`：独立命令、导入边界、维护锁、纯放映路由和资源回收。打包验证：先 `python3 -m pip wheel . --no-deps --wheel-dir dist/wheels`，再 `python3 scripts/validate_package.py --wheel dist/wheels/iptv_qa-0.1.0-py3-none-any.whl`。该验证从独立临时目录加载构建产物，检查网页资源和兼容入口。
+
+## 分层可播回归
+
+`tests/test_tiers.py` 覆盖瞬时失败降级、硬性排除、独立音频时长、稳定优先排序及发布策略迁移。`scripts/validate_quality.py --bin-dir PATH` 还用真实音视频 HLS 验证分层发布、代理取流及无音轨视频的拒绝。测试夹具通过不等于所有接收设备播放保证。

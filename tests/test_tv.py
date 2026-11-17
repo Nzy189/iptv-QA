@@ -41,11 +41,21 @@ def make_upstream_handler(server):
                         '#EXTINF:-1 group-title="Test",频道三\n'
                         '#EXTVLCOPT:http-user-agent=SpecialUA/1.0\n'
                         'http://127.0.0.1:%d/three/master.m3u8\n' % (port, port, port)).encode('utf-8')
+            elif self.path in ('/redirect/start.m3u8', '/redirect/hop.m3u8',
+                               '/one/redirect-media.m3u8'):
+                targets = {'/redirect/start.m3u8': '/redirect/hop.m3u8',
+                           '/redirect/hop.m3u8': '/one/master.m3u8',
+                           '/one/redirect-media.m3u8': '/one/media.m3u8'}
+                self.send_response(302)
+                self.send_header('Location', targets[self.path])
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return
             elif self.path == '/one/master.m3u8':
                 content_type = 'application/vnd.apple.mpegurl'
                 body = ('#EXTM3U\n'
                         '#EXT-X-STREAM-INF:BANDWIDTH=1000000\n'
-                        'media.m3u8\n'
+                        'redirect-media.m3u8\n'
                         '#EXT-X-STREAM-INF:BANDWIDTH=500000\n'
                         'http://127.0.0.1:%d/two/media.m3u8\n' % port).encode('utf-8')
             elif self.path == '/one/media.m3u8':
@@ -343,6 +353,35 @@ class TVServiceTests(unittest.TestCase):
             status, _, _ = client.request('POST', '/api/tv/login', {'password': 'nope'})
         self.assertEqual(status, 401)
         sleeper.assert_called_once()
+
+    def test_redirected_manifests_resolve_children_from_final_url(self):
+        client = self.logged_in_client()
+        port = self.upstream.server_port
+        rid = self.plugin.registry.register(
+            'http://127.0.0.1:%d/redirect/start.m3u8' % port,
+            {'user_agent': 'RedirectUA/1.0'})
+        status, _, data = client.request('GET', '/tv/stream/%d' % rid)
+        self.assertEqual(status, 200)
+        variant = next(line for line in data.decode().splitlines()
+                       if line.startswith('/tv/stream/'))
+        status, _, data = client.request('GET', variant)
+        self.assertEqual(status, 200)
+        import re
+        children = re.findall(r'/tv/stream/\d+', data.decode())
+        expected = [b'0123456789abcdef', b'INITMP4', None,
+                    b'SEGMENT-1A', b'SEGMENT-2']
+        self.assertEqual(len(children), len(expected))
+        for child, body in zip(children, expected):
+            status, _, payload = client.request('GET', child)
+            self.assertEqual(status, 200)
+            if body is None:
+                audio_segment = next(line for line in payload.decode().splitlines()
+                                     if line.startswith('/tv/stream/'))
+                self.assertEqual(client.request('GET', audio_segment)[2], b'SEGMENT-2')
+            else:
+                self.assertEqual(payload, body)
+        self.assertEqual(self.upstream.hits['/one/seg001.ts?token=abc'],
+                         'RedirectUA/1.0')
 
     def test_full_proxy_flow(self):
         client = self.logged_in_client()

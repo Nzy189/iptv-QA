@@ -33,7 +33,7 @@ def fetch_upstream(url, headers, max_bytes, range_header=None):
         data = handle.read(max_bytes + 1)
         if len(data) > max_bytes:
             raise ValueError('upstream object too large')
-        return handle.getcode(), handle.headers, data
+        return handle.getcode(), handle.headers, data, handle.geturl()
 
 def rewrite_playlist(text, base_url, headers, register):
     lines = []

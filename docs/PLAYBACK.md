@@ -24,6 +24,10 @@ Open `http://127.0.0.1:8089/tv/`, log in and paste an M3U URL. `/` redirects to 
 - On a decode failure or sound without picture, the frontend can request FFmpeg fallback: H.264/AAC, up to 720p and 2 Mbps. Audio-only sources show a notice; transcoding cannot manufacture missing video.
 - Default limits are two simultaneous transcodes and 90 seconds idle time. Tune `--transcode-limit`, `--transcode-idle` and `--ffmpeg`; `IPTV_TV_FFMPEG` is also supported. Direct proxy playback does not require FFmpeg. Service shutdown stops owned transcodes and removes their temporary files.
 
+## Redirected live streams
+
+Some channel URLs redirect to a CDN directory whose playlist uses relative file names. The proxy resolves child playlists, segments, keys and initialization files against the final response URL after redirects. Resolving them against the original channel URL can fetch the playlist successfully but request video from the wrong directory (HTTP 404), leaving browser playback unable to start even when FFmpeg can decode the source.
+
 ## Access and scope
 
 The player uses a shared password and an HttpOnly, SameSite=Strict session cookie. Incorrect passwords incur a one-second delay. Sessions and loaded channel registries live in memory and disappear after restart. This is a personal/small trusted-group player, not a multi-tenant account system. Dashboard routes are not protected by the player password.

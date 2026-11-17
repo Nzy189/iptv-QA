@@ -208,7 +208,7 @@ class TVPlugin:
             self.send_json(handler, {'error': 'blocked_url'}, 400)
             return True
         try:
-            _, _, data = fetch_upstream(url, {}, MAX_PLAYLIST_BYTES)
+            _, _, data, _ = fetch_upstream(url, {}, MAX_PLAYLIST_BYTES)
         except (URLError, OSError, ValueError, ssl.SSLError) as error:
             self.send_json(handler, {'error': 'source_fetch_failed', 'detail': str(error)[:200]}, 502)
             return True
@@ -266,7 +266,7 @@ class TVPlugin:
         entries = session['sets'].get(chain[slot])
         if entries is None:
             try:
-                _, _, data = fetch_upstream(chain[slot], {}, MAX_PLAYLIST_BYTES)
+                _, _, data, _ = fetch_upstream(chain[slot], {}, MAX_PLAYLIST_BYTES)
                 entries = parse_playlist(data.decode('utf-8', 'replace'))
             except (URLError, OSError, ValueError, ssl.SSLError) as error:
                 self.send_json(handler, {'error': 'backup_fetch_failed', 'detail': str(error)[:200]}, 502)
@@ -329,14 +329,14 @@ class TVPlugin:
     def serve_url(self, handler, url, headers):
         range_header = handler.headers.get('Range')
         try:
-            status, response_headers, data = fetch_upstream(url, headers, MAX_SEGMENT_BYTES, range_header)
+            status, response_headers, data, final_url = fetch_upstream(url, headers, MAX_SEGMENT_BYTES, range_header)
         except (URLError, OSError, ValueError, ssl.SSLError) as error:
             self.send_json(handler, {'error': 'upstream_failed', 'detail': str(error)[:200]}, 502)
             return True
         if data[:3] == BOM:
             data = data[3:]
         if data.lstrip(b'\r\n \t')[:7] == b'#EXTM3U':
-            text = rewrite_playlist(data.decode('utf-8', 'replace'), url, headers, self.registry.register)
+            text = rewrite_playlist(data.decode('utf-8', 'replace'), final_url, headers, self.registry.register)
             self.send_media(handler, 200, text.encode('utf-8'),
                             'application/vnd.apple.mpegurl; charset=utf-8')
             return True

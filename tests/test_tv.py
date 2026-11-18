@@ -43,6 +43,14 @@ def make_upstream_handler(server):
                         '#EXTINF:-1 group-title="Test",频道三\n'
                         '#EXTVLCOPT:http-user-agent=SpecialUA/1.0\n'
                         'http://127.0.0.1:%d/three/master.m3u8\n' % (port, port, port)).encode('utf-8')
+            elif self.path == '/flv-list.m3u8':
+                content_type = 'application/vnd.apple.mpegurl'
+                body = ('#EXTM3U\n'
+                        '#EXTINF:-1 group-title="Test",FLV频道\n'
+                        'http://127.0.0.1:%d/flv/live.flv\n' % port).encode('utf-8')
+            elif self.path == '/flv/live.flv':
+                content_type = 'video/x-flv'
+                body = b'FLV\x01\x05\x00\x00\x00\x09\x00' + b'\x12\x00\x00\x00' * 20000
             elif self.path in ('/redirect/start.m3u8', '/redirect/hop.m3u8',
                                '/one/redirect-media.m3u8'):
                 targets = {'/redirect/start.m3u8': '/redirect/hop.m3u8',
@@ -554,6 +562,16 @@ class TVServiceTests(unittest.TestCase):
         self.assertEqual([c['name'] for c in payload['channels']], ['独立频道'])
         self.assertEqual(client.request('GET', '/tv/play/0')[0], 200)
         self.assertEqual(client.request('GET', '/tv/play/0/1')[0], 404)
+
+    def test_flv_manifest_is_rejected_fast_with_415(self):
+        client = self.logged_in_client()
+        source = 'http://127.0.0.1:%d/flv-list.m3u8' % self.upstream.server_port
+        status, _, data = client.request('POST', '/api/tv/source', {'url': source})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(data)['count'], 1)
+        status, _, data = client.request('GET', '/tv/play/0/0')
+        self.assertEqual(status, 415)
+        self.assertIn(b'not_hls', data)
 
     def test_transcode_flow_serves_local_segments(self):
         client = self.logged_in_client()

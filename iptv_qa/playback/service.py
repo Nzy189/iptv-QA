@@ -21,7 +21,7 @@ from .constants import (TV_COOKIE, STATIC_FILES, PLAYER_CSP, PLAY_PATH, STREAM_P
                         MAX_SEGMENT_BYTES, TRANSCODE_START_TIMEOUT, BOM,
                         TV_PLAYLIST_PATH, TV_RACE_PATH, TV_RSTREAM_PATH, TV_RACE_VIEWS,
                         TV_RACE_CACHE_SECONDS, TV_RACE_CACHE_LIMIT)
-from .proxy import is_blocked_url, fetch_upstream, rewrite_playlist
+from .proxy import is_blocked_url, fetch_upstream, rewrite_playlist, NotHls
 from .state import Registry, Sessions
 from .transcoding import Transcoders
 
@@ -329,7 +329,7 @@ class TVPlugin:
         endpoint = self.resolve_channel(handler, index, slot)
         if endpoint is None:
             return True
-        return self.serve_url(handler, endpoint['url'], endpoint['headers'])
+        return self.serve_url(handler, endpoint['url'], endpoint['headers'], manifest=True)
 
     def serve_registered(self, handler, rid):
         if not self.authorized(handler):
@@ -548,10 +548,15 @@ class TVPlugin:
         self.send_media(handler, 200, path.read_bytes(), 'video/mp2t')
         return True
 
-    def serve_url(self, handler, url, headers, url_template=None):
+    def serve_url(self, handler, url, headers, url_template=None, manifest=False):
         range_header = handler.headers.get('Range')
         try:
-            status, response_headers, data, final_url = fetch_upstream(url, headers, MAX_SEGMENT_BYTES, range_header)
+            status, response_headers, data, final_url = fetch_upstream(
+                url, headers, MAX_PLAYLIST_BYTES if manifest else MAX_SEGMENT_BYTES,
+                range_header, require_playlist=manifest)
+        except NotHls:
+            self.send_json(handler, {'error': 'not_hls'}, 415)
+            return True
         except (URLError, OSError, ValueError, ssl.SSLError) as error:
             self.send_json(handler, {'error': 'upstream_failed', 'detail': str(error)[:200]}, 502)
             return True

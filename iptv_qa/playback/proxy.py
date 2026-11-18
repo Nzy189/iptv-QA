@@ -3,13 +3,17 @@ import ssl
 from urllib import request as urlrequest
 from urllib.error import URLError
 from urllib.parse import urljoin, urlsplit
-from .constants import BLOCKED_HOSTS, USER_AGENT, UPSTREAM_TIMEOUT, URI_ATTR
+from .constants import BLOCKED_HOSTS, BOM, USER_AGENT, UPSTREAM_TIMEOUT, URI_ATTR
 
 
 def is_blocked_url(url):
     return (urlsplit(url).hostname or '').lower() in BLOCKED_HOSTS
 
-def fetch_upstream(url, headers, max_bytes, range_header=None):
+class NotHls(Exception):
+    """The upstream answered with content that is not an HLS playlist."""
+
+
+def fetch_upstream(url, headers, max_bytes, range_header=None, require_playlist=False):
     request_headers = {'User-Agent': headers.get('user_agent') or USER_AGENT, 'Accept': '*/*'}
     if headers.get('referer'):
         request_headers['Referer'] = headers['referer']
@@ -30,7 +34,17 @@ def fetch_upstream(url, headers, max_bytes, range_header=None):
             error.close()
         raise
     with response as handle:
-        data = handle.read(max_bytes + 1)
+        # Playlist requests sniff the first block and abort immediately on
+        # non-HLS content (e.g. endless FLV live streams), instead of
+        # buffering the whole segment-size cap into memory.
+        if require_playlist:
+            data = handle.read(65537)
+            probe = data[3:] if data[:3] == BOM else data
+            if probe.lstrip(b'\r\n \t')[:7] != b'#EXTM3U':
+                raise NotHls('not_hls')
+            data += handle.read(max(0, max_bytes + 1 - len(data)))
+        else:
+            data = handle.read(max_bytes + 1)
         if len(data) > max_bytes:
             raise ValueError('upstream object too large')
         return handle.getcode(), handle.headers, data, handle.geturl()

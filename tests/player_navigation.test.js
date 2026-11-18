@@ -225,8 +225,11 @@ function player(count = 40, sets = 3) {
     assert.equal(p.calls.length, 1, 'accepted confirm sends exactly one report');
     assert.deepEqual(p.calls[0], ['/api/library/action',
       { operation: 'report_line', source_id: 'snap', channel_id: 'ch0', slot: 0, reason: 'content_mismatch' }]);
-    assert.deepEqual(Array.from(p.state.channels[0].reportedSlots), [0]);
-    assert.equal(p.state.slot, 1, 'playback resumes at the next free line');
+    assert.equal(p.state.slot, 0, 'a successful report re-races from the first remaining line');
+    assert.deepEqual(p.instances.slice(-5).map(h => h.url),
+      ['/tv/play/0/0?source_id=snap', '/tv/play/0/1?source_id=snap', '/tv/play/0/2?source_id=snap',
+       '/tv/play/0/3?source_id=snap', '/tv/play/0/4?source_id=snap'],
+      'the channel restarts its race from slot 0 against the live view');
     assert.ok(p.elements['cleanup-status'].textContent.indexOf('已清理 1 条线路') === 0);
   }
   {
@@ -250,7 +253,6 @@ function player(count = 40, sets = 3) {
     await settle();
     assert.ok(p.elements['overlay-text'].textContent.indexOf('总表已更新') !== -1,
       'a stale revision explains the conflict');
-    assert.ok(!p.state.channels[0].reportedSlots, 'a failed report marks nothing locally');
   }
   {
     const p = player(3, 3); p.calls = []; p.play(0);
@@ -258,24 +260,6 @@ function player(count = 40, sets = 3) {
     p.elements['report-btn'].click();
     await settle();
     assert.equal(p.calls.length, 0, 'report does nothing outside managed sources');
-  }
-  {
-    const p = reportPlayer(); p.play(0);
-    p.elements['report-btn'].click();
-    await settle();
-    p.elements['race-btn'].click();
-    p.play(0);
-    p.fail();
-    assert.equal(p.state.slot, 2, 'line advance skips the reported line');
-  }
-  {
-    const p = reportPlayer(); p.play(0);
-    p.elements['report-btn'].click();
-    await settle();
-    p.play(1); p.play(0);
-    assert.deepEqual(p.instances.slice(-4).map(h => h.url),
-      ['/tv/play/0/1?source_id=snap', '/tv/play/0/2?source_id=snap', '/tv/play/0/3?source_id=snap', '/tv/play/0/4?source_id=snap'],
-      'returning to the channel races the remaining lines, never the reported one');
   }
 })().then(() => console.log('PLAYER_NAVIGATION_OK: backups, sequential scan, random non-repeat, stale events, watchdog, normal mode, hedged racing, autoplay notices, report cleanup'))
   .catch(error => { console.error(error); process.exit(1); });

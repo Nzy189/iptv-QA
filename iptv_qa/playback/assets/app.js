@@ -142,17 +142,6 @@
     return -1;
   }
 
-  function isReported(channel, slot) {
-    return !!(channel && channel.reportedSlots && channel.reportedSlots.indexOf(slot) !== -1);
-  }
-  function firstFreeSlot(channel, after) {
-    var start = (after === undefined ? 0 : after + 1);
-    for (var s = start; s < state.setCount; s += 1) {
-      if (!isReported(channel, s)) return s;
-    }
-    return -1;
-  }
-
   function reportCurrentLine() {
     if (!state.libraryScope || state.current < 0 || state.reporting) return;
     var channel = state.channels[state.current];
@@ -171,7 +160,6 @@
         if (!response.ok) throw Error(response.status === 409
           ? '总表已更新，请重新加载分组后再清理' : (data.error || '清理未保存'));
         if (state.sourceId !== source) return;
-        channel.reportedSlots = (channel.reportedSlots || []).concat([slot]);
         state.cleanupRevision = data.revision;
         if (data.channel_quarantined) {
           channel.removed = true;
@@ -249,9 +237,8 @@
   function advanceAfterFailure(reason) {
     clearWatchdog();
     endRace(null);
-    var next = firstFreeSlot(state.channels[state.current], state.slot);
-    if (next >= 0) {
-      state.slot = next;
+    if (state.slot + 1 < state.setCount) {
+      state.slot += 1;
       state.transcoding = false;
       if (state.hls) { state.hls.destroy(); state.hls = null; }
       startPlayback(false);
@@ -314,10 +301,10 @@
     if (race.candidates.every(function (c) { return c.dropped; })) {
       endRace(race, null);
       if (race.mediaError && !state.destructive) {
-        state.slot = firstFreeSlot(state.channels[state.current]);
+        state.slot = 0;
         startPlayback(true);
       } else {
-        state.slot = race.candidates[race.candidates.length - 1].slot;
+        state.slot = race.candidates.length - 1;
         advanceAfterFailure('多线路竞速全部失败');
       }
     }
@@ -353,20 +340,15 @@
 
   function startRace(index, generation) {
     var channel = state.channels[index];
-    var total = channel.line_count || 1;
-    if (state.slot !== firstFreeSlot(channel) || !state.raceOn || total < 2) return;
-    var slots = [];
-    for (var s = state.slot; s < total && slots.length < 5; s += 1) {
-      if (!isReported(channel, s)) slots.push(s);
-    }
-    if (slots.length < 2) return;
+    var lines = Math.min(5, channel.line_count || 1);
+    if (state.slot !== 0 || !state.raceOn || lines < 2) return;
     var race = { generation: generation, candidates: [], mediaError: false, ended: false };
     state.race = race;
-    var main = { slot: slots[0], video: video, hls: state.hls, dropped: false, main: true };
+    var main = { slot: 0, video: video, hls: state.hls, dropped: false, main: true };
     main.loadedHandler = function () { raceWinner(race, main); };
     race.candidates.push(main);
     video.addEventListener('loadeddata', main.loadedHandler);
-    for (var ci = 1; ci < slots.length; ci += 1) {
+    for (var s = 1; s < lines; s += 1) {
       (function (slot) {
         var el = document.createElement('video');
         el.muted = true;
@@ -400,7 +382,7 @@
         if (state.sourceId) rurl += '?source_id=' + encodeURIComponent(state.sourceId);
         rhls.loadSource(rurl);
         rhls.attachMedia(el);
-      })(slots[ci]);
+      })(s);
     }
   }
 
@@ -484,11 +466,11 @@
     state.current = i;
     state.transcoding = false;
     state.noVideoNotified = false;
+    state.slot = 0;
     if (!viaZap) { state.zapAttempts = 0; state.triedChannels = {}; }
     state.triedChannels[i] = true;
     var channel = state.channels[i];
     state.setCount=channel.line_count || state.setCount;
-    state.slot = firstFreeSlot(channel);
     armDestruction();
     nowPlaying.textContent = (i + 1) + ' · ' + channel.name;
     channelBadge.textContent = (i + 1) + ' ' + channel.name;

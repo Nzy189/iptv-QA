@@ -63,7 +63,9 @@ class LibraryAPI:
             if not session or not session.get('library_scope') or body.get('source_id') != session.get('source_id'):
                 raise Conflict('stale_player_source')
             cid = body.get('channel_id')
-            channel = next((c for c in session['channels'] if c['id'] == cid), None)
+            # resolve the slot against the live view, the same index space /tv/play uses;
+            # a session snapshot drifts as soon as any line is disabled
+            channel = next((c for c in self.library.view(session['library_scope']) if c['id'] == cid), None)
             if channel is None:
                 raise ValueError('unknown_channel')
             slot = body.get('slot')

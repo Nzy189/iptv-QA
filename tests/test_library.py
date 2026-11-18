@@ -248,29 +248,36 @@ class LibraryHTTPTests(unittest.TestCase):
         self.assertEqual(self.client.request('POST','/api/library/action',restore)[0],409)
         self.assertEqual(len(self.store.view('main')),1)
 
-    def test_report_line_disables_line_and_quarantines_emptied_channel(self):
+    def test_report_line_resolves_slots_against_the_live_view(self):
         self.login();_,_,body=self.client.request('POST','/api/tv/source',{'url':'http://owned.example/iptv_ok.m3u'})
         payload=json.loads(body);cid=payload['channels'][0]['id']
-        sid=self.store.view('main')[0]['lines'][2]['stream_id']
         request={'operation':'report_line','channel_id':cid,'source_id':payload['source_id'],
                  'slot':2,'reason':'content_mismatch'}
+        sids=[l['stream_id'] for l in self.store.view('main')[0]['lines']]
         status,_,body=self.client.request('POST','/api/library/action',request)
-        self.assertEqual(status,200);data=json.loads(body)
-        self.assertFalse(data['channel_quarantined'])
-        self.assertEqual(len(self.store.view('main')[0]['lines']),4)
-        enable={'operation':'enable_line','scope':'main','channel_id':cid,
-                'revision':self.store.revision(),'stream_id':sid}
-        status,_,body=self.client.request('POST','/api/library/action',enable)
-        self.assertEqual(status,200)
-        self.assertEqual(len(self.store.view('main')[0]['lines']),5)
-        token=self.client.cookie.split('=',1)[1].split(';')[0]
-        session=self.plugin.sessions.get(token+':'+payload['source_id'])
-        session['library_revision']=json.loads(body)['revision']
-        for slot in (0,1,2,3,4):
-            request['slot']=slot
+        self.assertEqual(status,200);self.assertFalse(json.loads(body)['channel_quarantined'])
+        self.assertEqual([l['stream_id'] for l in self.store.view('main')[0]['lines']],
+                         [s for s in sids if s!=sids[2]],
+                         'reporting slot 2 disables the live view\'s third line')
+        status,_,body=self.client.request('POST','/api/library/action',request)
+        self.assertEqual(status,200);self.assertFalse(json.loads(body)['channel_quarantined'])
+        self.assertEqual([l['stream_id'] for l in self.store.view('main')[0]['lines']],
+                         [s for s in sids if s not in (sids[2],sids[3])],
+                         'the same slot now maps to the line that shifted into place')
+
+    def test_report_line_quarantines_channel_when_last_line_is_reported(self):
+        self.login();_,_,body=self.client.request('POST','/api/tv/source',{'url':'http://owned.example/iptv_ok.m3u'})
+        payload=json.loads(body);cid=payload['channels'][0]['id']
+        request={'operation':'report_line','channel_id':cid,'source_id':payload['source_id'],
+                 'slot':0,'reason':'content_mismatch'}
+        for _ in range(4):
             status,_,body=self.client.request('POST','/api/library/action',request)
+            self.assertEqual(status,200);self.assertFalse(json.loads(body)['channel_quarantined'])
+        status,_,body=self.client.request('POST','/api/library/action',request)
         self.assertEqual(status,200);self.assertTrue(json.loads(body)['channel_quarantined'])
         self.assertEqual(self.store.view('main'),[])
+        self.assertEqual(self.client.request('POST','/api/library/action',request)[0],400,
+                         'a channel outside the live view is unknown')
         restore={'operation':'restore','scope':'main','channel_id':cid,'revision':self.store.revision()}
         self.assertEqual(self.client.request('POST','/api/library/action',restore)[0],200)
 

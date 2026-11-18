@@ -169,6 +169,11 @@ class TVPlugin:
             return self.handle_library(handler, True)
         if path == '/api/tv/login':
             return self.handle_login(handler)
+        if path == '/api/tv/prefetch':
+            if not self.authorized(handler):
+                self.send_json(handler, {'error': 'unauthorized'}, 401)
+                return True
+            return self.handle_prefetch(handler)
         if path == '/api/tv/source':
             if not self.authorized(handler):
                 self.send_json(handler, {'error': 'unauthorized'}, 401)
@@ -269,6 +274,33 @@ class TVPlugin:
             while len(self.auth_tokens)>64:self.auth_tokens.popitem(last=False)
         cookie = '%s=%s; Path=/; Max-Age=604800; HttpOnly; SameSite=Strict' % (TV_COOKIE, token)
         self.send_json(handler, {'ok': True}, 200, {'Set-Cookie': cookie})
+        return True
+
+    def handle_prefetch(self, handler):
+        body = self.read_json(handler) or {}
+        mode = str(body.get('mode') or 'off')
+        if mode not in Prefetcher.VALID_MODES:
+            mode = 'off'
+        session = self.playback_session(handler)
+        if not session or not session.get('library_scope') or mode == 'off':
+            self.send_json(handler, {'ok': True, 'warmed': False})
+            return True
+        try:
+            index = int(body.get('index'))
+        except (TypeError, ValueError):
+            self.send_json(handler, {'ok': True, 'warmed': False})
+            return True
+        channels = session.get('channels') or []
+        if len(channels) < 2 or index < 0 or index >= len(channels):
+            self.send_json(handler, {'ok': True, 'warmed': False})
+            return True
+        nxt = channels[(index + 1) % len(channels)]
+        lines = [{'url': line['url'], 'headers': line['headers']} for line in nxt.get('lines', [])]
+        if not lines:
+            self.send_json(handler, {'ok': True, 'warmed': False})
+            return True
+        self.prefetcher.warm(session['library_scope'], nxt['id'], lines, mode=mode)
+        self.send_json(handler, {'ok': True, 'warmed': True})
         return True
 
     def handle_source(self, handler):

@@ -1,4 +1,5 @@
 import http.client
+import io
 import json
 import os
 import re
@@ -795,6 +796,54 @@ class PrefetchIntegrationTests(unittest.TestCase):
         plugin.prefetcher.warm('main', 'c', [], wait=True)
         got = plugin._race_winner('main', 'c', [{'url': 'http://u/x.m3u8', 'headers': {}}])
         self.assertEqual(got, self.WINNER)
+        plugin.close()
+
+    class _Handler:
+        def __init__(self, path, body):
+            self.path = path
+            self.command = 'POST'
+            self.headers = {'Content-Length': str(len(body))}
+            self.rfile = io.BytesIO(body)
+            self.wfile = io.BytesIO()
+            self.status = None
+
+        def send_response(self, code):
+            self.status = code
+
+        def send_header(self, key, value):
+            pass
+
+        def end_headers(self):
+            pass
+
+    def test_prefetch_endpoint_warms_next_with_given_mode(self):
+        rows = self._rows()
+        plugin = TVPlugin(b'pw')
+        plugin.prefetcher.race_func = lambda lines: self.WINNER
+        session = {'source': 'x', 'library_scope': 'main', 'channels': rows,
+                   'source_id': 'sid', 'chain': ['x'], 'sets': {}}
+        plugin.playback_session = lambda handler: session
+        plugin.authorized = lambda handler: True
+        body = json.dumps({'mode': 'light', 'index': 0}).encode('utf-8')
+        handler = self._Handler('/api/tv/prefetch', body)
+        self.assertTrue(plugin.handle_prefetch(handler))
+        deadline = time.time() + 2
+        while time.time() < deadline and plugin.prefetcher.get('main', 'c2') is None:
+            time.sleep(0.02)
+        self.assertEqual(plugin.prefetcher.get('main', 'c2'), self.WINNER)
+        plugin.close()
+
+    def test_prefetch_endpoint_off_does_not_warm(self):
+        rows = self._rows()
+        plugin = TVPlugin(b'pw')
+        plugin.prefetcher.race_func = lambda lines: self.WINNER
+        session = {'source': 'x', 'library_scope': 'main', 'channels': rows,
+                   'source_id': 'sid', 'chain': ['x'], 'sets': {}}
+        plugin.playback_session = lambda handler: session
+        plugin.authorized = lambda handler: True
+        handler = self._Handler('/api/tv/prefetch', json.dumps({'mode': 'off', 'index': 0}).encode('utf-8'))
+        plugin.handle_prefetch(handler)
+        self.assertIsNone(plugin.prefetcher.get('main', 'c2'))
         plugin.close()
 
 

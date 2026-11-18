@@ -56,6 +56,34 @@ class LibraryAPI:
                 session['library_revision'],reason=body['reason'],publish=True)
             session['library_revision'] = revision
             return {'revision':revision,'state':'pending','channel_id':cid}
+        if operation == 'report_line':
+            token=player.session_token(handler)
+            source_id=body.get('source_id','')
+            session = player.sessions.get(token+':'+source_id) if isinstance(source_id,str) else None
+            if not session or not session.get('library_scope') or body.get('source_id') != session.get('source_id'):
+                raise Conflict('stale_player_source')
+            cid = body.get('channel_id')
+            # resolve the slot against the live view, the same index space /tv/play uses;
+            # a session snapshot drifts as soon as any line is disabled
+            channel = next((c for c in self.library.view(session['library_scope']) if c['id'] == cid), None)
+            if channel is None:
+                raise ValueError('unknown_channel')
+            slot = body.get('slot')
+            if not isinstance(slot, int) or isinstance(slot, bool) or not 0 <= slot < len(channel['lines']):
+                raise ValueError('invalid_slot')
+            if body.get('reason') != 'content_mismatch':
+                raise ValueError('invalid_reason')
+            sid = channel['lines'][slot]['stream_id']
+            revision = self.library.act('disable_line', cid, session['library_scope'],
+                                       session['library_revision'], sid=sid,
+                                       reason='content_mismatch', publish=True)
+            quarantined = not any(e['id'] == cid for e in self.library.view(session['library_scope']))
+            if quarantined:
+                revision = self.library.act('quarantine', cid, session['library_scope'],
+                                          revision, reason='content_mismatch', publish=True)
+            session['library_revision'] = revision
+            return {'revision':revision,'state':'pending','channel_id':cid,
+                    'channel_quarantined':quarantined}
         if operation == 'preview':
             return self.library.preview(body.get('scope'),body.get('channel_id'))
         revision = self.library.act(operation,body.get('channel_id'),body.get('scope'),

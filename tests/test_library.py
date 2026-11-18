@@ -187,7 +187,7 @@ class LibraryHTTPTests(unittest.TestCase):
         from test_tv import Client
         self.temp=tempfile.TemporaryDirectory()
         self.store=Library(Path(self.temp.name)/'library/catalog.sqlite3')
-        self.store.ingest('main',playlist(7),'fixture')
+        self.store.ingest('main',playlist(5),'fixture')
         self.plugin=TVPlugin('library-test-password',public_base='http://owned.example',library=self.store)
         self.server=Server(('127.0.0.1',0),make_handler(self.temp.name,'',self.plugin))
         self.thread=threading.Thread(target=self.server.serve_forever,daemon=True);self.thread.start()
@@ -247,5 +247,53 @@ class LibraryHTTPTests(unittest.TestCase):
         self.assertEqual(self.client.request('POST','/api/library/action',restore)[0],200)
         self.assertEqual(self.client.request('POST','/api/library/action',restore)[0],409)
         self.assertEqual(len(self.store.view('main')),1)
+
+    def test_report_line_resolves_slots_against_the_live_view(self):
+        self.login();_,_,body=self.client.request('POST','/api/tv/source',{'url':'http://owned.example/iptv_ok.m3u'})
+        payload=json.loads(body);cid=payload['channels'][0]['id']
+        request={'operation':'report_line','channel_id':cid,'source_id':payload['source_id'],
+                 'slot':2,'reason':'content_mismatch'}
+        sids=[l['stream_id'] for l in self.store.view('main')[0]['lines']]
+        status,_,body=self.client.request('POST','/api/library/action',request)
+        self.assertEqual(status,200);self.assertFalse(json.loads(body)['channel_quarantined'])
+        self.assertEqual([l['stream_id'] for l in self.store.view('main')[0]['lines']],
+                         [s for s in sids if s!=sids[2]],
+                         'reporting slot 2 disables the live view\'s third line')
+        status,_,body=self.client.request('POST','/api/library/action',request)
+        self.assertEqual(status,200);self.assertFalse(json.loads(body)['channel_quarantined'])
+        self.assertEqual([l['stream_id'] for l in self.store.view('main')[0]['lines']],
+                         [s for s in sids if s not in (sids[2],sids[3])],
+                         'the same slot now maps to the line that shifted into place')
+
+    def test_report_line_quarantines_channel_when_last_line_is_reported(self):
+        self.login();_,_,body=self.client.request('POST','/api/tv/source',{'url':'http://owned.example/iptv_ok.m3u'})
+        payload=json.loads(body);cid=payload['channels'][0]['id']
+        request={'operation':'report_line','channel_id':cid,'source_id':payload['source_id'],
+                 'slot':0,'reason':'content_mismatch'}
+        for _ in range(4):
+            status,_,body=self.client.request('POST','/api/library/action',request)
+            self.assertEqual(status,200);self.assertFalse(json.loads(body)['channel_quarantined'])
+        status,_,body=self.client.request('POST','/api/library/action',request)
+        self.assertEqual(status,200);self.assertTrue(json.loads(body)['channel_quarantined'])
+        self.assertEqual(self.store.view('main'),[])
+        self.assertEqual(self.client.request('POST','/api/library/action',request)[0],400,
+                         'a channel outside the live view is unknown')
+        restore={'operation':'restore','scope':'main','channel_id':cid,'revision':self.store.revision()}
+        self.assertEqual(self.client.request('POST','/api/library/action',restore)[0],200)
+
+    def test_report_line_rejects_bad_requests(self):
+        from test_tv import Client
+        self.login();_,_,body=self.client.request('POST','/api/tv/source',{'url':'http://owned.example/iptv_ok.m3u'})
+        payload=json.loads(body);cid=payload['channels'][0]['id']
+        base={'operation':'report_line','channel_id':cid,'source_id':payload['source_id'],
+              'slot':0,'reason':'content_mismatch'}
+        anonymous=Client(self.server.server_port)
+        self.assertEqual(anonymous.request('POST','/api/library/action',base)[0],401)
+        self.assertEqual(self.client.request('POST','/api/library/action',base)[0],200)
+        for override in ({'slot':9},{'slot':'2'},{'slot':True},{'reason':'startup_timeout'},
+                         {'channel_id':'nope'},{'source_id':'old'}):
+            self.assertEqual(self.client.request('POST','/api/library/action',
+                dict(base,**override))[0],400 if 'source_id' not in override else 409,
+                'rejected: %s'%override)
 
 if __name__=='__main__':unittest.main()

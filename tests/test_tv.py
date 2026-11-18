@@ -617,13 +617,17 @@ class TokenRaceTests(unittest.TestCase):
             cls.plugin = tv.TVPlugin('pw', static_dir=tv.assets_dir(), library=cls.library,
                                      race_func=fake_race)
             cls.nolib_plugin = tv.TVPlugin('pw', static_dir=tv.assets_dir())
+            cls.base_plugin = tv.TVPlugin('pw', static_dir=tv.assets_dir(), library=cls.library,
+                                          public_base='https://bucket.example.test',
+                                          race_func=fake_race)
         finally:
             os.environ.pop('IPTV_TV_TOKENS', None)
         cls.server = web.Server(('127.0.0.1', 0), web.make_handler(root, '', cls.plugin))
         cls.off_server = web.Server(('127.0.0.1', 0), web.make_handler(root, '', cls.off_plugin))
         cls.nolib_server = web.Server(('127.0.0.1', 0), web.make_handler(root, '', cls.nolib_plugin))
+        cls.base_server = web.Server(('127.0.0.1', 0), web.make_handler(root, '', cls.base_plugin))
         cls.threads = []
-        for server in (cls.server, cls.off_server, cls.nolib_server):
+        for server in (cls.server, cls.off_server, cls.nolib_server, cls.base_server):
             thread = threading.Thread(target=server.serve_forever)
             thread.daemon = True
             thread.start()
@@ -631,12 +635,13 @@ class TokenRaceTests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        for server in (cls.server, cls.off_server, cls.nolib_server):
+        for server in (cls.server, cls.off_server, cls.nolib_server, cls.base_server):
             server.shutdown()
             server.server_close()
         cls.plugin.close()
         cls.off_plugin.close()
         cls.nolib_plugin.close()
+        cls.base_plugin.close()
         cls.upstream.shutdown()
         cls.upstream.server_close()
         cls.temp.cleanup()
@@ -663,6 +668,14 @@ class TokenRaceTests(unittest.TestCase):
         self.assertEqual(client.request('GET', '/tv/playlist.m3u?token=wrong')[0], 401)
         nolib = Client(self.nolib_server.server_port)
         self.assertEqual(nolib.request('GET', '/tv/playlist.m3u?token=tok-alpha')[0], 404)
+
+    def test_playlist_race_urls_use_request_host_not_public_base(self):
+        client = Client(self.base_server.server_port)
+        status, _, data = client.request('GET', '/tv/playlist.m3u?token=tok-beta')
+        self.assertEqual(status, 200)
+        text = data.decode('utf-8')
+        self.assertIn('http://127.0.0.1:%d/tv/race/main/' % self.base_server.server_port, text)
+        self.assertNotIn('bucket.example.test', text)
 
     def test_playlist_renders_one_race_url_per_channel(self):
         client = self.client()

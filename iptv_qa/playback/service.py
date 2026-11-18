@@ -368,8 +368,8 @@ class TVPlugin:
         if view not in TV_RACE_VIEWS:
             self.send_json(handler, {'error': 'not_found'}, 404)
             return True
-        base = (self.public_base.rstrip('/') if self.public_base
-                else 'http://%s' % (handler.headers.get('Host') or '127.0.0.1'))
+        # race endpoints live on this service, never on the published-playlist base
+        base = 'http://%s' % (handler.headers.get('Host') or '127.0.0.1')
         lines = ['#EXTM3U']
         for row in self.library.view(view):
             attrs = json.loads(row['metadata'])

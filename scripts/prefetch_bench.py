@@ -4,17 +4,19 @@
 Usage:
   python scripts/prefetch_bench.py --base http://HOST:PORT --token TOKEN \
       --view main --channel CHANNEL_ID --prev PREV_CHANNEL_ID
-Times a cold /tv/race request for CHANNEL_ID after optionally warming it via
-POST /api/tv/prefetch of PREV_CHANNEL_ID. Repeat --rounds times.
+Times a cold /tv/race request for CHANNEL_ID after warming it by first racing
+PREV_CHANNEL_ID (which triggers the server-side prewarm of CHANNEL_ID).
+Repeat --rounds times.
 
-Note: the benchmark uses the token racing path (APTV-style), where the server
-prewarms the next channel after each race hit, so the "warm" group measures
-serve_token_race hitting the prewarmed cache. POST /api/tv/prefetch requires
-a browser session cookie (tvsess); when run without one the warm group still
-exercises the automatic prewarm triggered by the previous race request.
+The benchmark uses only the token racing path (APTV-style): the server
+prewarms the channel AFTER the one raced (in view order), so the warm group
+first races --prev (triggering server-side prewarm of --channel), sleeps
+~1s, then times a race request for --channel that should hit the prewarmed
+cache. --prev must therefore be the channel immediately BEFORE --channel in
+the same view; otherwise the prewarm targets a different channel and the
+warm group measures cold timing. No browser session cookie is needed.
 """
 import argparse
-import json
 import time
 from urllib import request as urlrequest
 
@@ -37,19 +39,14 @@ def main():
     parser.add_argument('--rounds', type=int, default=5)
     args = parser.parse_args()
     cold = []
-    for _ in range(args.rounds):
+    for i in range(args.rounds):
         cold.append(timed_race(args.base, args.token, args.view, args.channel))
-        time.sleep(61)  # let the ~60s winner cache expire for a true cold sample
+        if i + 1 < args.rounds:
+            time.sleep(61)  # let the ~60s winner cache expire for a true cold sample
     warm = []
     for _ in range(args.rounds):
-        # warming the previous channel triggers server-side prewarm of this one
-        body = json.dumps({'mode': 'light', 'index': 0}).encode('utf-8')
-        req = urlrequest.Request(args.base.rstrip('/') + '/api/tv/prefetch', data=body,
-                                 headers={'Content-Type': 'application/json'})
-        try:
-            urlrequest.urlopen(req, timeout=10).read()
-        except Exception:
-            pass
+        # racing the previous channel triggers server-side prewarm of this one
+        timed_race(args.base, args.token, args.view, args.prev)
         time.sleep(1.0)
         warm.append(timed_race(args.base, args.token, args.view, args.channel))
     print('cold avg %.3fs  warm avg %.3fs' % (sum(cold) / len(cold), sum(warm) / len(warm)))

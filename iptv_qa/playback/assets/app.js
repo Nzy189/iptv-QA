@@ -28,6 +28,7 @@
   var raceBtn = document.getElementById('race-btn');
   var playerArea = document.getElementById('player-area');
   var destructionBtn = document.getElementById('destruction-btn');
+  var reportBtn = document.getElementById('report-btn');
   var cleanupStatus = document.getElementById('cleanup-status');
   var playBtn = document.getElementById('play-btn');
   var muteBtn = document.getElementById('mute-btn');
@@ -41,7 +42,7 @@
                 mode: localStorage.getItem('tv-mode') || 'normal',
                 order: localStorage.getItem('tv-zap-order') === 'random' ? 'random' : 'sequential',
                 libraryScope: null, sourceId: null, sourceSets: 1, destructive: false, destructionTimer: null,
-                destructionDeadline: 0, cleaned: 0, removing: false, triedChannels: {}, generation: 0, sourceRequest: 0, zapAttempts: 0, watchdog: null,
+                destructionDeadline: 0, cleaned: 0, removing: false, reporting: false, triedChannels: {}, generation: 0, sourceRequest: 0, zapAttempts: 0, watchdog: null,
                 race: null, raceOn: localStorage.getItem('tv-source-race') !== '0' };
 
   function showLogin() {
@@ -130,6 +131,55 @@
     return -1;
   }
 
+  function isReported(channel, slot) {
+    return !!(channel && channel.reportedSlots && channel.reportedSlots.indexOf(slot) !== -1);
+  }
+  function firstFreeSlot(channel, after) {
+    var start = (after === undefined ? 0 : after + 1);
+    for (var s = start; s < state.setCount; s += 1) {
+      if (!isReported(channel, s)) return s;
+    }
+    return -1;
+  }
+
+  function reportCurrentLine() {
+    if (!state.libraryScope || state.current < 0 || state.reporting) return;
+    var channel = state.channels[state.current];
+    if (!channel || channel.removed) return;
+    if (!window.confirm('当前线路播放的不是该频道内容？确认后此线路将被清理，可在管理页恢复')) return;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      showError('网络已断开，未清理', true); return;
+    }
+    var slot = state.slot, index = state.current, generation = state.generation, source = state.sourceId;
+    state.reporting = true;
+    clearWatchdog(); clearDestruction(); endRace(null);
+    api('/api/library/action', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({operation:'report_line', source_id:source, channel_id:channel.id,
+                            slot:slot, reason:'content_mismatch'})})
+      .then(function (response) { return response.json().then(function (data) {
+        if (!response.ok) throw Error(response.status === 409
+          ? '总表已更新，请重新加载分组后再清理' : (data.error || '清理未保存'));
+        if (state.sourceId !== source) return;
+        channel.reportedSlots = (channel.reportedSlots || []).concat([slot]);
+        state.cleanupRevision = data.revision;
+        if (data.channel_quarantined) {
+          channel.removed = true;
+          cleanupStatus.textContent = '已清理 1 条线路 · 该频道已无可播线路，移入清理区 · 可在管理页恢复';
+          renderList();
+          if (state.generation === generation) {
+            var next = nextVisible(index);
+            if (next < 0) showError('当前分组已无可播放频道，可到管理页恢复', false);
+            else play(next);
+          }
+          return;
+        }
+        cleanupStatus.textContent = '已清理 1 条线路 · 可在管理页恢复';
+        if (state.generation === generation && state.current === index) play(index);
+      }); })
+      .catch(function (error) { showError(error.message || '清理失败，未删除记录', true); })
+      .finally(function () { state.reporting = false; });
+  }
+
   function removeFailed(reason) {
     if (!state.destructive || !state.libraryScope || state.removing) return false;
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -188,8 +238,9 @@
   function advanceAfterFailure(reason) {
     clearWatchdog();
     endRace(null);
-    if (state.slot + 1 < state.setCount) {
-      state.slot += 1;
+    var next = firstFreeSlot(state.channels[state.current], state.slot);
+    if (next >= 0) {
+      state.slot = next;
       state.transcoding = false;
       if (state.hls) { state.hls.destroy(); state.hls = null; }
       startPlayback(false);
@@ -252,10 +303,10 @@
     if (race.candidates.every(function (c) { return c.dropped; })) {
       endRace(race, null);
       if (race.mediaError && !state.destructive) {
-        state.slot = 0;
+        state.slot = firstFreeSlot(state.channels[state.current]);
         startPlayback(true);
       } else {
-        state.slot = race.candidates.length - 1;
+        state.slot = race.candidates[race.candidates.length - 1].slot;
         advanceAfterFailure('多线路竞速全部失败');
       }
     }
@@ -290,15 +341,20 @@
 
   function startRace(index, generation) {
     var channel = state.channels[index];
-    var lines = Math.min(5, channel.line_count || 1);
-    if (state.slot !== 0 || !state.raceOn || lines < 2) return;
+    var total = channel.line_count || 1;
+    if (state.slot !== firstFreeSlot(channel) || !state.raceOn || total < 2) return;
+    var slots = [];
+    for (var s = state.slot; s < total && slots.length < 5; s += 1) {
+      if (!isReported(channel, s)) slots.push(s);
+    }
+    if (slots.length < 2) return;
     var race = { generation: generation, candidates: [], mediaError: false, ended: false };
     state.race = race;
-    var main = { slot: 0, video: video, hls: state.hls, dropped: false, main: true };
+    var main = { slot: slots[0], video: video, hls: state.hls, dropped: false, main: true };
     main.loadedHandler = function () { raceWinner(race, main); };
     race.candidates.push(main);
     video.addEventListener('loadeddata', main.loadedHandler);
-    for (var s = 1; s < lines; s += 1) {
+    for (var ci = 1; ci < slots.length; ci += 1) {
       (function (slot) {
         var el = document.createElement('video');
         el.muted = true;
@@ -332,7 +388,7 @@
         if (state.sourceId) rurl += '?source_id=' + encodeURIComponent(state.sourceId);
         rhls.loadSource(rurl);
         rhls.attachMedia(el);
-      })(s);
+      })(slots[ci]);
     }
   }
 
@@ -412,11 +468,11 @@
     state.current = i;
     state.transcoding = false;
     state.noVideoNotified = false;
-    state.slot = 0;
     if (!viaZap) { state.zapAttempts = 0; state.triedChannels = {}; }
     state.triedChannels[i] = true;
     var channel = state.channels[i];
     state.setCount=channel.line_count || state.setCount;
+    state.slot = firstFreeSlot(channel);
     armDestruction();
     nowPlaying.textContent = (i + 1) + ' · ' + channel.name;
     channelBadge.textContent = (i + 1) + ' ' + channel.name;
@@ -508,6 +564,7 @@
         state.sourceId=data.source_id||null;state.libraryScope=data.library_scope||null;
         state.sourceSets=data.sets||1;state.cleaned=0;
         destructionBtn.disabled=!state.libraryScope;
+        reportBtn.disabled=!state.libraryScope;
         state.setCount = data.sets || 1;
         localStorage.setItem('tv-source', url);
         renderList();
@@ -536,6 +593,7 @@
           state.channels = data.channels;
           state.sourceId=data.source_id||null;state.libraryScope=data.library_scope||null;state.sourceSets=data.sets||1;
           destructionBtn.disabled=!state.libraryScope;
+        reportBtn.disabled=!state.libraryScope;
           state.setCount = data.sets || 1;
           sourceInput.value = data.source || sourceInput.value;
           renderList();
@@ -623,6 +681,7 @@
     localStorage.setItem('tv-source-race', state.raceOn ? '1' : '0');
     updateRaceBtn();
   });
+  reportBtn.addEventListener('click', reportCurrentLine);
   destructionBtn.addEventListener('click',function(){
     if(!state.libraryScope){showError('自定义订阅不受总表管理，不能清理',false);return;}
     state.destructive=!state.destructive;
@@ -704,6 +763,7 @@
         state.channels = data.channels;
         state.sourceId=data.source_id||null;state.libraryScope=data.library_scope||null;state.sourceSets=data.sets||1;
         destructionBtn.disabled=!state.libraryScope;
+        reportBtn.disabled=!state.libraryScope;
         state.setCount = data.sets || 1;
         sourceInput.value = data.source || saved;
         renderList();

@@ -47,7 +47,7 @@ function player(count = 40, sets = 3) {
     documentElement: { requestFullscreen() { return Promise.resolve(); } }
   };
   const sandbox = {
-    document, Hls, window: { Hls, innerWidth: 1200 },
+    document, Hls, window: { Hls, innerWidth: 1200, confirm: () => true },
     localStorage: { getItem: k => storage.get(k), setItem: (k, v) => storage.set(k, v) },
     setTimeout(callback, delay) { const id = ++counter; timers.set(id, { callback, delay }); return id; },
     clearTimeout(id) { timers.delete(id); }, setInterval() {},
@@ -56,7 +56,7 @@ function player(count = 40, sets = 3) {
   };
   let code = fs.readFileSync(path.join(__dirname, '../iptv_qa/playback/assets/app.js'), 'utf8');
   const end = code.lastIndexOf('})();');
-  code = code.slice(0, end) + 'globalThis.playerTest = {state, play, advanceAfterFailure, armDestruction, removeFailed, currentVideo: function(){return video;}};\n})();';
+  code = code.slice(0, end) + 'globalThis.playerTest = {state, play, advanceAfterFailure, armDestruction, removeFailed, reportCurrentLine, currentVideo: function(){return video;}};\n})();';
   vm.runInNewContext(code, sandbox);
   const api = sandbox.playerTest;
   api.state.channels = Array.from({ length: count }, (_, i) => ({ name: 'Channel ' + (i + 1) }));
@@ -174,4 +174,77 @@ function player(count = 40, sets = 3) {
   assert.ok(p.instances[0].destroyed && p.instances[1].destroyed, 'switching channels tears down the race');
   assert.ok(!p.elements['player-area'].children.includes(hidden), 'hidden race elements are removed');
 }
-console.log('PLAYER_NAVIGATION_OK: backups, sequential scan, random non-repeat, stale events, watchdog, normal mode, hedged racing');
+(async () => {
+  function settle() { return new Promise(resolve => setImmediate(resolve)); }
+  function reportPlayer() {
+    const p = player(3, 5);
+    p.state.libraryScope = 'main'; p.state.sourceId = 'snap';
+    p.state.channels[0].id = 'ch0'; p.state.channels[0].line_count = 5;
+    p.calls = []; p.reply = { revision: 7, channel_quarantined: false };
+    p.sandbox.fetch = (path, options) => {
+      p.calls.push([path, options.body ? JSON.parse(options.body) : null]);
+      return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve(p.reply) });
+    };
+    return p;
+  }
+  {
+    const p = reportPlayer(); p.play(0);
+    p.elements['report-btn'].click();
+    await settle();
+    assert.equal(p.calls.length, 1, 'accepted confirm sends exactly one report');
+    assert.deepEqual(p.calls[0], ['/api/library/action',
+      { operation: 'report_line', source_id: 'snap', channel_id: 'ch0', slot: 0, reason: 'content_mismatch' }]);
+    assert.deepEqual(Array.from(p.state.channels[0].reportedSlots), [0]);
+    assert.equal(p.state.slot, 1, 'playback resumes at the next free line');
+    assert.ok(p.elements['cleanup-status'].textContent.indexOf('已清理 1 条线路') === 0);
+  }
+  {
+    const p = reportPlayer(); p.sandbox.window.confirm = () => false; p.play(0);
+    p.elements['report-btn'].click();
+    await settle();
+    assert.equal(p.calls.length, 0, 'cancelling the confirm sends nothing');
+  }
+  {
+    const p = reportPlayer(); p.reply = { revision: 8, channel_quarantined: true }; p.play(0);
+    p.elements['report-btn'].click();
+    await settle();
+    assert.ok(p.state.channels[0].removed, 'an emptied channel is marked removed');
+    assert.equal(p.state.current, 1, 'playback moves to the next channel');
+  }
+  {
+    const p = reportPlayer();
+    p.sandbox.fetch = () => Promise.resolve({ status: 409, ok: false, json: () => Promise.resolve({ error: 'stale_revision' }) });
+    p.play(0);
+    p.elements['report-btn'].click();
+    await settle();
+    assert.ok(p.elements['overlay-text'].textContent.indexOf('总表已更新') !== -1,
+      'a stale revision explains the conflict');
+    assert.ok(!p.state.channels[0].reportedSlots, 'a failed report marks nothing locally');
+  }
+  {
+    const p = player(3, 3); p.calls = []; p.play(0);
+    p.sandbox.fetch = (path) => { p.calls.push(path); return Promise.resolve({ status: 200, ok: true, json: () => Promise.resolve({}) }); };
+    p.elements['report-btn'].click();
+    await settle();
+    assert.equal(p.calls.length, 0, 'report does nothing outside managed sources');
+  }
+  {
+    const p = reportPlayer(); p.play(0);
+    p.elements['report-btn'].click();
+    await settle();
+    p.elements['race-btn'].click();
+    p.play(0);
+    p.fail();
+    assert.equal(p.state.slot, 2, 'line advance skips the reported line');
+  }
+  {
+    const p = reportPlayer(); p.play(0);
+    p.elements['report-btn'].click();
+    await settle();
+    p.play(1); p.play(0);
+    assert.deepEqual(p.instances.slice(-4).map(h => h.url),
+      ['/tv/play/0/1?source_id=snap', '/tv/play/0/2?source_id=snap', '/tv/play/0/3?source_id=snap', '/tv/play/0/4?source_id=snap'],
+      'returning to the channel races the remaining lines, never the reported one');
+  }
+})().then(() => console.log('PLAYER_NAVIGATION_OK: backups, sequential scan, random non-repeat, stale events, watchdog, normal mode, hedged racing, report cleanup'))
+  .catch(error => { console.error(error); process.exit(1); });

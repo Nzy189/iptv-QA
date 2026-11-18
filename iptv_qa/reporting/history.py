@@ -288,7 +288,7 @@ def render_html(rows, generated_at, public_base='', catalog_state=None):
             esc(shown(c['overlap_channels'])), esc(shown(c['new_playable_channels'])), esc(shown(c['repository_best_channels'])), esc(shown(c['restored_channels'])), cells)
     if catalog_state:
         cards = []
-        for key,label,tip in [('main','综合频道','每台最多五条主备线路'),('supplement','今日补充','新增来源，独立分组'),('english','英语频道','新闻与英语收听'),('removed','清理区','可在频道管理中恢复')]:
+        for key,label,tip in [('main','综合频道','每台最多五条主备线路'),('live','直播频道','虎牙一起看与轮播直播'),('english','英语频道','新闻与英语收听'),('removed','清理区','可在频道管理中恢复')]:
             cards.append('<div class="card"><span>{}</span><strong>{}</strong><small>{}</small></div>'.format(label,esc(shown(catalog_state.get(key))),tip))
         publication = catalog_state.get('publication') or {}
         current_note = '<section class="card current"><b>当前总表版本 {} · 已发布版本 {}</b><p>同步状态：{}。最近检测未发布时，继续使用已发布内容。</p></section>'.format(

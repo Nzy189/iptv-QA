@@ -469,30 +469,42 @@ def validate_candidates(channels, endpoints, probes, decodes, reliability, ua, c
             'max_startup_seconds': cfg.get('max_startup_seconds', 30), 'errors': dict(errors)}
 
 
-def render_playlists(channels, probes, decodes, reliability, epg_url=''):
+def render_playlists(channels, probes, decodes, reliability, epg_url='', live_groups=frozenset()):
     header = '#EXTM3U'
     if epg_url:
         header += ' x-tvg-url="{}"'.format(epg_url.replace('"', ''))
-    outputs = {3: [header], 5: [header]}
+    outputs = {3: [header], 5: [header], 'live': [header]}
     stats = {'channels_total': len(channels), 'channels_available': 0,
-             'top3_entries': 0, 'top5_entries': 0, 'unavailable_channels': []}
+             'top3_entries': 0, 'top5_entries': 0, 'live_channels': 0, 'unavailable_channels': []}
+
+    def emit(target, channel, entry):
+        target.append(channel['info'])
+        extra = list(entry['extra'])
+        tested_ua = probes[entry['endpoint']['id']].get('ua')
+        if tested_ua and not entry['endpoint']['headers'].get('user_agent'):
+            extra.append('#EXTVLCOPT:http-user-agent=' + tested_ua)
+        entry['published_endpoint_id'] = endpoint(entry['output_url'], extra)['id']
+        target.extend(extra)
+        target.append(entry['output_url'])
+
     for channel in channels.values():
         best = choose_lines(list(channel['entries'].values()), probes, decodes, reliability, 5)
         if best:
             stats['channels_available'] += 1
         else:
             stats['unavailable_channels'].append(channel['name'])
+        # Channels whose group is listed in `live_groups` (e.g. game-live and
+        # rerun rooms) publish to the separate live view; regular channels from
+        # the same source stay in the main Top5 selection.
+        is_live = channel['group'] in live_groups
+        if is_live:
+            stats['live_channels'] += 1
         for count in (3, 5):
-            for entry in best[:count]:
-                outputs[count].append(channel['info'])
-                extra = list(entry['extra'])
-                tested_ua = probes[entry['endpoint']['id']].get('ua')
-                if tested_ua and not entry['endpoint']['headers'].get('user_agent'):
-                    extra.append('#EXTVLCOPT:http-user-agent=' + tested_ua)
-                entry['published_endpoint_id'] = endpoint(entry['output_url'], extra)['id']
-                outputs[count].extend(extra)
-                outputs[count].append(entry['output_url'])
+            for entry in ([] if is_live else best[:count]):
+                emit(outputs[count], channel, entry)
                 stats['top{}_entries'.format(count)] += 1
+        for entry in (best if is_live else []):
+            emit(outputs['live'], channel, entry)
     return {count: '\n'.join(lines) + '\n' for count, lines in outputs.items()}, stats
 
 
@@ -947,7 +959,8 @@ def main(argv=None):
                                               and decodes.get(ep['id'], {}).get('validation_tier') not in ('basic', 'pending_review')})
             finally:
                 history.close()
-        outputs, stats = render_playlists(channels, probes, decodes, reliability, cfg.get('epg_url', ''))
+        outputs, stats = render_playlists(channels, probes, decodes, reliability, cfg.get('epg_url', ''),
+                                          frozenset(cfg.get('live_groups', ())))
         news_lines, news_summary = international_news(cfg)
         set_files, set_stats = split_ranked_playlist(outputs[5])
         report = dict(stats, run_id=run_id, started_at=state['started_at'], finished_at=utcnow(),
@@ -976,10 +989,13 @@ def main(argv=None):
         export_dir.mkdir()
         if tiers.enabled(cfg):
             stable_records = {i: dict(r, ok=r.get('validation_tier') == 'stable') for i, r in decodes.items()}
-            stable_outputs, _ = render_playlists(channels, probes, stable_records, reliability, cfg.get('epg_url', ''))
+            stable_outputs, _ = render_playlists(channels, probes, stable_records, reliability, cfg.get('epg_url', ''),
+                                                 frozenset(cfg.get('live_groups', ())))
             atomic_text(export_dir / 'iptv_stable.m3u', stable_outputs[3])
-        for count, text in outputs.items():
-            atomic_text(export_dir / 'iptv_top{}.m3u'.format(count), text)
+        for count in (3, 5):
+            atomic_text(export_dir / 'iptv_top{}.m3u'.format(count), outputs[count])
+        if '#EXTINF:' in outputs['live']:
+            atomic_text(export_dir / 'iptv_live.m3u', outputs['live'])
         for filename, text in set_files.items():
             atomic_text(export_dir / filename, text)
         prior = {}
@@ -1015,6 +1031,8 @@ def main(argv=None):
                             evidence[raw_id]=row
                 library.ingest(scope, append_group(outputs[5], news_lines), 'qa:' + run_id,
                                evidence=evidence, report=report)
+                if scope == 'main' and '#EXTINF:' in outputs['live']:
+                    library.ingest('live', outputs['live'], 'qa:' + run_id, evidence=evidence)
                 try:
                     published = Publisher(cfg, library=library).publish()
                 except BlockingIOError:

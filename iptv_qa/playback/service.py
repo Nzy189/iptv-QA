@@ -278,7 +278,7 @@ class TVPlugin:
             self.send_json(handler, {'error': 'blocked_url'}, 400)
             return True
         scope_map = {'iptv_ok.m3u':'main','iptv_top5.m3u':'main',
-                     'iptv_set4.m3u':'supplement','iptv_english.m3u':'english'}
+                     'iptv_live.m3u':'live','iptv_english.m3u':'english'}
         if self.library is not None:
             scope = next((v for k,v in scope_map.items() if url == self._playlist_url(k,handler.headers.get('Host'))),None)
             if scope:

@@ -15,7 +15,7 @@ from iptv_qa.reporting.history import render_html
 PUBLIC_FILES = {'/iptv_history.csv': ('iptv_history.csv', 'text/csv; charset=utf-8'),
                 '/iptv_history.json': ('iptv_history.json', 'application/json; charset=utf-8'),
                 '/api/history': ('iptv_history.json', 'application/json; charset=utf-8')}
-PLAYLISTS = ('iptv_ok.m3u', 'iptv_top3.m3u', 'iptv_set1.m3u', 'iptv_set2.m3u', 'iptv_set3.m3u', 'iptv_set4.m3u', 'iptv_english.m3u', 'iptv_stable.m3u')
+PLAYLISTS = ('iptv_ok.m3u', 'iptv_top3.m3u', 'iptv_set1.m3u', 'iptv_set2.m3u', 'iptv_set3.m3u', 'iptv_live.m3u', 'iptv_english.m3u', 'iptv_stable.m3u')
 STATUS_FIELDS = ('run_id', 'state', 'stage', 'completed', 'total', 'passed', 'updated_at', 'started_at',
                  'finished_at', 'channels_available', 'top3_entries', 'top5_entries', 'error_type')
 
@@ -163,8 +163,8 @@ refresh();setInterval(refresh,30000);
                 if path.lstrip('/') in PLAYLISTS and path.count('/') == 1:
                     if not public_base:
                         name = path.lstrip('/')
-                        if name == 'iptv_set4.m3u':
-                            target = data_dir / 'extras/iptv_set4.m3u'
+                        if name == 'iptv_live.m3u':
+                            target = data_dir / 'extras/iptv_live.m3u'
                         elif name == 'iptv_english.m3u':
                             target = data_dir / 'english/published/iptv_top3.m3u'
                         else:
@@ -212,7 +212,7 @@ def create_player(password, public_base='', ffmpeg=None, transcode_limit=2, tran
     """Playback is optional; dashboard-only startup never imports the player."""
     from iptv_qa.playback.service import TVPlugin, assets_dir
     playlists = (('top5', '综合频道', 'iptv_ok.m3u'),
-                 ('set4', '今日补充', 'iptv_set4.m3u'),
+                 ('live', '直播频道', 'iptv_live.m3u'),
                  ('english', '英语频道', 'iptv_english.m3u'))
     return TVPlugin(password, assets_dir(), playlists, public_base, ffmpeg=ffmpeg,
                     transcode_limit=transcode_limit, transcode_idle_seconds=transcode_idle, library=library)

@@ -4,7 +4,7 @@
 
 可选频道总表是受管播放和发布的唯一数据来源。启用 `channel_library.enabled`，指定共享 `path`、`data_root`，通过 `--library-config` 或 `IPTV_LIBRARY_CONFIG` 将私有配置传给网页服务。在 `/tv/manage/` 使用播放器密码登录。自定义远程订阅仍为只读输入。
 
-频道使用持久 UUID；别名和完整请求身份辅助匹配。元数据ID按分组建立映射，名称冲突时不盲目合并。同一频道可属于综合、补充、英语多个视图。分组成员和线路各自保留人工启停状态，自动检测可用资格与人工控制分开，再导入不会覆盖清理或停用标记。模糊匹配仍需人工检查。
+频道使用持久 UUID；别名和完整请求身份辅助匹配。元数据ID按分组建立映射，名称冲突时不盲目合并。同一频道可属于综合、直播、英语多个视图。分组成员和线路各自保留人工启停状态，自动检测可用资格与人工控制分开，再导入不会覆盖清理或停用标记。模糊匹配仍需人工检查。
 
 管理页支持搜索分页、名称和分组修改、线路优先级、线路停用恢复、按分组清理恢复、影响预览、发布任务、版本回退及加密备份请求。写操作带版本检查，旧页面收到409而不是覆盖新数据。服务端检测和浏览器失败分开记录。列表API不返回原始源URL或凭据。
 
@@ -43,7 +43,7 @@ erDiagram
     }
     memberships {
         TEXT channel_id PK
-        TEXT scope PK "main, supplement, english"
+        TEXT scope PK "main, live, english"
         INTEGER position
         INTEGER enabled "operator switch"
         INTEGER available "seen in latest import"
@@ -112,7 +112,7 @@ erDiagram
 
 - `channels` — 每台频道一行，持久 UUID。改名、换分组、重新导入都不会改变 UUID。
 - `aliases` — 按视图隔离的匹配键（有 `tvg-id` 时用 `epg:tvg-id:...`，否则用名称）。别名只辅助导入匹配；改名不会破坏身份，名称冲突也不会被盲目合并。
-- `memberships` — 频道属于哪些视图（综合、补充、英语），人工开关（`enabled`）与最近一次导入是否见到（`available`）分开。视图是行上的标签而不是独立的表，加第四个范围不需要改表结构。
+- `memberships` — 频道属于哪些视图（综合、直播、英语），人工开关（`enabled`）与最近一次导入是否见到（`available`）分开。视图是行上的标签而不是独立的表，加第四个范围不需要改表结构。
 - `routes` — 每台频道、每个视图、每条线路一行：检测排序（`rank`）、人工优先级（`priority`）、人工开关（`enabled`）、当前检测资格（`eligible`）和证据。人工状态与自动状态是不同的列，导入和检测不会重置人工决定。
 - `streams` / `origins` — 线路的 URL 和请求头只存一份，跨频道、跨视图共享；origins 记录每个线路最早和最近由哪个来源提供。
 - `observations` — 只追加的检测器和浏览器证据。观测不直接改频道状态，资格是从观测中另行推导的。
@@ -125,7 +125,7 @@ erDiagram
 ```mermaid
 flowchart LR
   SRC[Upstream playlists] --> QA[QA checker]
-  QA --> EXP[Published exports Top5, Top3, Set4, English]
+  QA --> EXP[Published exports Top5, Top3, Live, English]
   EXP --> MIG["migrate and ingest via alias matching"]
   MIG --> DB[(SQLite library)]
   OPS[Management page] -->|"revision-checked writes, 409 on stale"| DB
@@ -161,7 +161,7 @@ python3 -m iptv_qa library publish --config /etc/iptv-qa/config.json
 python3 -m iptv_qa library worker --config /etc/iptv-qa/config.json
 ```
 
-先在隔离目录迁移验证并保留当前订阅。迁移读取已有主表Top5/Top3、补充Set4和英语输出，不把导入称作重新媒体验证。后续合格QA结果更新总表资格；迁移前仍在运行的旧任务若成功发布，后台可接入，失败和诊断样本不能替换总表。
+先在隔离目录迁移验证并保留当前订阅。迁移读取已有主表Top5/Top3、直播和英语输出，不把导入称作重新媒体验证。后续合格QA结果更新总表资格；迁移前仍在运行的旧任务若成功发布，后台可接入，失败和诊断样本不能替换总表。
 
 每次发布生成不可变版本目录，单个发布器串行执行。先生成本地输出，OBS先写版本化对象再写固定对象，脱敏完成清单最后上传。OBS多对象更新不是原子事务，部分成功会保留失败状态并重试同一版本。排队期间总表改变则旧发布请求作废，不能悄悄发布未经复核的后续编辑。回退恢复所选版本的人工控制状态，再生成新发布，不抹掉操作记录，也不会恢复缺少当前检测资格的线路。
 

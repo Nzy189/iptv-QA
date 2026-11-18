@@ -66,7 +66,7 @@ class Publisher:
             snapshot = self.library.snapshot()
             if expected is not None and snapshot['revision'] != expected:
                 raise ValueError('publication_revision_changed')
-            rows = {scope: Library.view_snapshot(snapshot, scope) for scope in ('main', 'supplement', 'english')}
+            rows = {scope: Library.view_snapshot(snapshot, scope) for scope in ('main', 'live', 'english')}
             with self.library.connect() as db:
                 prior = db.execute('SELECT * FROM versions ORDER BY rowid DESC LIMIT 1').fetchone()
             reuse = bool(prior and prior['revision'] == snapshot['revision'] and prior['state'] in ('pending', 'sync_failed'))
@@ -83,7 +83,7 @@ class Publisher:
                 contents = {'main/iptv_top5.m3u': render(rows['main']),
                     'main/iptv_top3.m3u': render(rows['main'], 3),
                     'main/iptv_stable.m3u': render(rows['main'], stable=True),
-                    'supplement/iptv_set4.m3u': render(rows['supplement']),
+                    'live/iptv_live.m3u': render(rows['live']),
                     'english/iptv_top3.m3u': render(rows['english'], 3)}
                 for index in range(3):
                     contents['main/iptv_set%d.m3u' % (index+1)] = render(rows['main'], single=index)
@@ -109,7 +109,7 @@ class Publisher:
                     db.execute('INSERT INTO version_states VALUES (?,?)',(identity,json.dumps(controls)))
             switch_local(self.data / 'published', version / 'main')
             switch_local(self.data / 'english/published', version / 'english')
-            atomic_text(self.data / 'extras/iptv_set4.m3u', (version / 'supplement/iptv_set4.m3u').read_text(encoding='utf-8'))
+            atomic_text(self.data / 'extras/iptv_live.m3u', (version / 'live/iptv_live.m3u').read_text(encoding='utf-8'))
             names = self.cfg.get('obs', {}).get('object_names', {})
             try:
                 for relative, info in manifest['files'].items():

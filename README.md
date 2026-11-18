@@ -10,6 +10,8 @@
 
 [![Tests](https://github.com/Nzy189/iptv-QA/actions/workflows/ci.yml/badge.svg)](https://github.com/Nzy189/iptv-QA/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/Nzy189/iptv-QA)](https://github.com/Nzy189/iptv-QA/releases/latest)
+[![Python](https://img.shields.io/badge/python-3.6%2B-blue.svg)](https://www.python.org/)
+[![FFmpeg](https://img.shields.io/badge/media-FFmpeg%207.x-green.svg)](https://ffmpeg.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 [**Channel subscription**](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_ok.m3u) · [**Download iptv-QA**](https://github.com/Nzy189/iptv-QA/releases/latest)
@@ -34,6 +36,8 @@ Optional [channel management](docs/LIBRARY.md) provides one persistent library, 
 | **No more slow-start false kills** | The deep startup budget rises from 12 to 30 seconds: slow-starting but stable channels are kept, and startup speed only affects ranking, never qualification. |
 | **Unified channel library** | Channel identity separate from stream lines, versioned publication, reversible quarantine and encrypted backups, with up-to-five-line playback. |
 
+Since the v0.2.0 release, a [token racing subscription](docs/PLAYBACK.md#token-racing-subscription-for-tv-apps) extends the same line racing to TV apps and other M3U players.
+
 ## What it does
 
 - Real video checks: decoded frames, media progression, HLS playlist freshness, and re-verification over a new connection at least 30 minutes later.
@@ -51,6 +55,7 @@ Optional [channel management](docs/LIBRARY.md) provides one persistent library, 
 | --- | --- |
 | **Check real video** | Decode actual frames and inspect media progression, rather than accepting an address solely because it responds. |
 | **Switch channels faster** | Hedged racing loads several lines at once and keeps the first one to show a picture. |
+| **Watch on TV apps too** | A token-protected subscription URL gives Apple TV, Android TV and other M3U players one racing address per channel — the server races the lines and relays the winner. |
 | **Make channel choice easier** | Merge duplicate channel names and rank sources by startup, recent test results and historical reliability. |
 | **Keep alternatives ready** | One channel catalog exports full, compact and single-source views, so the main route and backups are ready together. |
 | **Curate your own extras** | Optionally append an operator-curated group, such as international news, to Top3 and the three sets without re-testing it. |
@@ -63,7 +68,7 @@ Optional [channel management](docs/LIBRARY.md) provides one persistent library, 
 
 ### One catalog, several views
 
-Every playlist file is a different view of one channel catalog: the main subscription carries all ranked lines, and the other views simply keep fewer of them per scenario. The built-in player offers three entries — combined channels (the main view, up to five ranked lines per channel with automatic racing), today's supplement and English channels.
+Every playlist file is a different view of one channel catalog: the main subscription carries all ranked lines, and the other views simply keep fewer of them per scenario. The built-in player offers three entries — combined channels (the main view, up to five ranked lines per channel with automatic racing), live channels (game-live rooms) and English channels.
 
 Open a file below or copy its link into a player that supports M3U subscriptions.
 
@@ -91,7 +96,16 @@ These links serve the last published snapshot and may lag behind the current QA 
 
 ## How it works
 
-**Collect → Deduplicate → Probe → Decode → Observe → Reconnect → Rank → Publish**
+```mermaid
+flowchart LR
+    A[Collect] --> B[Deduplicate]
+    B --> C[Probe]
+    C --> D[Decode frames]
+    D --> E["Observe ≥30 s"]
+    E --> F["Reconnect after ≥30 min"]
+    F --> G[Rank]
+    G --> H[Publish]
+```
 
 Shortlisted sources are observed for at least 30 seconds of both video progression and wall time, then checked again through a new connection after at least 30 minutes. HLS checks look for ongoing playlist updates. Candidates passing both deep checks form the stable tier. In tiered mode, current basic A/V passes can remain as lower-priority fallbacks; strict mode requires both deep checks for all published entries.
 
@@ -108,7 +122,7 @@ Publication guards retain the previous result when a run produces zero usable ch
 | Reports only / playback only | `dashboard` / `play` |
 | Combined HTTP service / scheduled full workflow | `serve` / `run` |
 
-The player includes channel search, number entry, random switching, automatic backup fallback and on-demand H.264/AAC transcoding. See the [playback guide](docs/PLAYBACK.md).
+The player includes channel search, number entry, random switching, automatic backup fallback and on-demand H.264/AAC transcoding. For TV apps and other external M3U players, an optional token-authenticated subscription serves one racing URL per channel: the server races the lines and relays the winner. See the [playback guide](docs/PLAYBACK.md).
 
 ## Quick start
 

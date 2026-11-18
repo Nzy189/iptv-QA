@@ -2,7 +2,7 @@
 <header><div><h1>频道管理</h1><p>统一管理频道与主备线路，发布后同步所有订阅。</p></div><nav><a href="/tv/">播放频道</a><a href="/">频道中心</a></nav></header>
 <form id="manager-login" hidden><label>访问密码 <input id="password" type="password" autocomplete="current-password" required></label><button>登录</button></form>
 <main id="workspace" hidden>
-<section class="toolbar"><select id="scope" aria-label="频道分组"><option value="main">综合频道 · Top5</option><option value="supplement">今日补充</option><option value="english">英语频道</option></select><input id="query" type="search" placeholder="搜索频道或分组" aria-label="搜索"><label><input id="removed" type="checkbox">清理区</label><button id="refresh">刷新</button><button id="publish" class="primary">发布改动</button><button id="backup">私有备份</button></section>
+<section class="toolbar"><select id="scope" aria-label="频道分组"><option value="main">综合频道 · Top5</option><option value="live">直播频道</option><option value="english">英语频道</option></select><input id="query" type="search" placeholder="搜索频道或分组" aria-label="搜索"><label><input id="removed" type="checkbox">清理区</label><button id="refresh">刷新</button><button id="publish" class="primary">发布改动</button><button id="backup">私有备份</button></section>
 <p id="notice" role="status"></p><section id="preview" class="panel" hidden><p id="preview-text"></p><button id="apply" class="primary">确认操作</button><button id="cancel">取消</button></section>
 <div class="columns"><section class="panel"><div class="section-head"><h2>频道总表</h2><span id="counter"></span></div><div id="channels"></div><div class="pagination"><button id="previous">上一页</button><span id="page"></span><button id="next">下一页</button></div></section>
 <section id="detail" class="panel"><h2>频道与线路</h2><p class="muted">从左侧选择频道。停用线路不会删除频道；清理频道仅影响当前分组，支持恢复。</p></section></div>

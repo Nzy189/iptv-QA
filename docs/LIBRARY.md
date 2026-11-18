@@ -4,7 +4,7 @@
 
 The optional channel library is the source of truth for managed playback and publication. Enable `channel_library.enabled`, set a shared `path` and `data_root`, and pass the private config to the web service using `--library-config` or `IPTV_LIBRARY_CONFIG`. Open `/tv/manage/` and log in with the player password. Custom remote playlists remain read-only inputs.
 
-Channels use persistent UUIDs; aliases and exact request identities assist import matching. Metadata IDs are scoped and conflicting names are not blindly merged. A channel may belong to main, supplemental and English views. Each membership and line has independent operator controls; current QA eligibility is separate from manual enabled state. Reimport never resets manual removals or disabled lines. Ambiguous matching still needs operator review.
+Channels use persistent UUIDs; aliases and exact request identities assist import matching. Metadata IDs are scoped and conflicting names are not blindly merged. A channel may belong to main, live and English views. Each membership and line has independent operator controls; current QA eligibility is separate from manual enabled state. Reimport never resets manual removals or disabled lines. Ambiguous matching still needs operator review.
 
 The manager supports search, pagination, name/group edits, line priority, line disable/restore, scoped channel quarantine/restore, impact preview, publication jobs, version rollback and encrypted-backup requests. Changes use revision checks; stale pages receive HTTP409. Detector results and browser failures are separate observations. Detailed raw URLs and credentials are not returned by the management list API.
 
@@ -43,7 +43,7 @@ erDiagram
     }
     memberships {
         TEXT channel_id PK
-        TEXT scope PK "main, supplement, english"
+        TEXT scope PK "main, live, english"
         INTEGER position
         INTEGER enabled "operator switch"
         INTEGER available "seen in latest import"
@@ -112,7 +112,7 @@ erDiagram
 
 - `channels` — one row per channel with a persistent UUID. The UUID survives renames, group moves and re-imports.
 - `aliases` — scoped matching keys (`epg:tvg-id:...` when available, otherwise the name). Aliases only assist import matching; a rename never breaks identity, and conflicting names are not blindly merged.
-- `memberships` — which views (main, supplemental, English) a channel belongs to, with an operator switch (`enabled`) separate from latest-import availability (`available`). Views are labels on rows, not separate table sets, so adding a fourth scope needs no schema change.
+- `memberships` — which views (main, live, English) a channel belongs to, with an operator switch (`enabled`) separate from latest-import availability (`available`). Views are labels on rows, not separate table sets, so adding a fourth scope needs no schema change.
 - `routes` — one row per channel, view and line: QA rank, operator priority, operator switch, current QA eligibility and evidence. Manual and automatic state are different columns, so imports and QA runs cannot reset operator decisions.
 - `streams` / `origins` — a line's URL and headers are stored once and shared across channels and views; origins record which source first and last supplied each line.
 - `observations` — append-only detector and browser evidence. Observations never mutate channel state directly; eligibility is derived from them separately.
@@ -125,7 +125,7 @@ erDiagram
 ```mermaid
 flowchart LR
   SRC[Upstream playlists] --> QA[QA checker]
-  QA --> EXP[Published exports Top5, Top3, Set4, English]
+  QA --> EXP[Published exports Top5, Top3, Live, English]
   EXP --> MIG["migrate and ingest via alias matching"]
   MIG --> DB[(SQLite library)]
   OPS[Management page] -->|"revision-checked writes, 409 on stale"| DB
@@ -161,7 +161,7 @@ python3 -m iptv_qa library publish --config /etc/iptv-qa/config.json
 python3 -m iptv_qa library worker --config /etc/iptv-qa/config.json
 ```
 
-First migrate and test in an isolated directory, preserving current playlists. Migration imports existing main Top5/Top3, supplemental Set4 and English exports without claiming new media verification. An approved future QA result updates library eligibility; an in-flight pre-migration successful run can be reconciled by the worker. Failed/sample runs cannot replace the library.
+First migrate and test in an isolated directory, preserving current playlists. Migration imports existing main Top5/Top3, live and English exports without claiming new media verification. An approved future QA result updates library eligibility; an in-flight pre-migration successful run can be reconciled by the worker. Failed/sample runs cannot replace the library.
 
 Publication uses an immutable directory per revision and one serialized publisher. Local playlist pointers switch to generated exports; OBS versioned files upload before their fixed-key counterparts, and a sanitized manifest is uploaded last. Multi-object OBS updates are not atomic: partial delivery remains marked failed and retries the same immutable version. A queued publish is superseded if the database changes before processing; it cannot silently publish unreviewed later edits. Rollback restores operator control state from a known version and creates a new publication; it never erases the audit trail or revives a line lacking current eligibility.
 

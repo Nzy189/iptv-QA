@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS backups (id TEXT PRIMARY KEY, state TEXT, object_key 
 CREATE INDEX IF NOT EXISTS observations_by_channel ON observations(channel_id,id);
 CREATE INDEX IF NOT EXISTS routes_by_stream ON routes(stream_id);
 '''
-SCOPES = ('main', 'supplement', 'english')
+SCOPES = ('main', 'live', 'english')
 
 
 class Conflict(ValueError):
@@ -259,7 +259,7 @@ class Library:
             raise ValueError('unknown_channel')
         row = rows[0]
         outputs = {'main':['Top5','Top3','Set1','Set2','Set3','Stable'],
-                   'supplement':['Set4'], 'english':['English']}[scope]
+                   'live':['Live'], 'english':['English']}[scope]
         return {'revision':self.revision(), 'channel_id':cid, 'name':row['name'],
                 'scope':scope, 'lines':len(row['lines']), 'outputs':outputs}
 

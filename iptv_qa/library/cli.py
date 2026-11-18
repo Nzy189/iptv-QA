@@ -13,7 +13,7 @@ from .publishing import Publisher
 def migrate(library, cfg):
     data = Path(cfg['data_dir'])
     candidates = {'main': [data/'published/current/iptv_top5.m3u', data/'published/current/iptv_top3.m3u'],
-                  'supplement':[data/'extras/iptv_set4.m3u'],
+                  'live':[data/'extras/iptv_live.m3u'],
                   'english':[data/'english/published/current/iptv_top3.m3u']}
     result = {}
     for scope, files in candidates.items():

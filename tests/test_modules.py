@@ -93,12 +93,12 @@ class ModuleBoundaries(unittest.TestCase):
         with self.assertRaises(OSError):
             plugin.transcoders.start('test', 'http://unused.invalid/live', {})
 
-    def test_player_presets_combine_sets_and_keep_supplement_and_english_independent(self):
+    def test_player_presets_combine_sets_and_keep_live_and_english_independent(self):
         plugin = server.create_player('test-only-password', 'https://playlists.example')
         try:
-            self.assertEqual([p[0] for p in plugin.playlists], ['top5', 'set4', 'english'])
-            self.assertEqual(plugin._set_chain('https://playlists.example/iptv_set4.m3u', ''),
-                             ['https://playlists.example/iptv_set4.m3u'])
+            self.assertEqual([p[0] for p in plugin.playlists], ['top5', 'live', 'english'])
+            self.assertEqual(plugin._set_chain('https://playlists.example/iptv_live.m3u', ''),
+                             ['https://playlists.example/iptv_live.m3u'])
             self.assertEqual(len(plugin._set_chain('https://playlists.example/iptv_set1.m3u', '')), 3)
             self.assertEqual(plugin._set_chain('https://playlists.example/iptv_english.m3u', ''),
                              ['https://playlists.example/iptv_english.m3u'])

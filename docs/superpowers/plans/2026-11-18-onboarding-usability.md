@@ -206,7 +206,7 @@ python3 scripts/configure.py --output config.local.json --data-dir ./data
 python3 -m iptv_qa run --config config.local.json
 ```
 
-For scheduling and optional OBS uploads, follow the [deployment guide](docs/DEPLOYMENT.md).
+For scheduling and optional OBS uploads, follow the [deployment guide](../../../docs/DEPLOYMENT.md).
 
 ### Watch without checking
 
@@ -232,7 +232,7 @@ Open `http://127.0.0.1:8089/tv/`. FFmpeg is needed only for fallback transcoding
 - Unattended operation: scheduling, per-host concurrency control, retry handling and publication guards.
 - Reporting: dashboard, exported CSV/JSON history and optional Huawei OBS uploads with stable object names.
 
-**Not included:** uninterrupted-playback guarantees, a bundled fixed channel library, EPG, or access to paid/DRM-protected sources. Playback depends on the source, network and receiver; see [capability boundaries](docs/DESIGN.md#known-limitations).
+**Not included:** uninterrupted-playback guarantees, a bundled fixed channel library, EPG, or access to paid/DRM-protected sources. Playback depends on the source, network and receiver; see [capability boundaries](../../../docs/DESIGN.md#known-limitations).
 ```
 
 - [ ] **Step 3: 自检渲染与链接**
@@ -305,7 +305,7 @@ python3 scripts/configure.py --output config.local.json --data-dir ./data
 python3 -m iptv_qa run --config config.local.json
 ```
 
-定时任务与可选 OBS 上传见[部署配置](docs/DEPLOYMENT.zh-CN.md)。
+定时任务与可选 OBS 上传见[部署配置](../../../docs/DEPLOYMENT.zh-CN.md)。
 
 ### 不检测，直接看
 
@@ -331,7 +331,7 @@ python3 -m iptv_qa play --port 8089
 - 无人值守运行：定时任务、按主机并发控制、失败重试和发布保护。
 - 结果可见：仪表盘、CSV/JSON 历史导出，以及可选的华为 OBS 固定地址上传。
 
-**不包含：** 不保证不间断播放、不内置固定频道库、不做 EPG、不提供付费/DRM 源的访问。播放效果取决于上游、网络和接收设备，能力边界见[设计文档](docs/DESIGN.zh-CN.md#现有边界)。
+**不包含：** 不保证不间断播放、不内置固定频道库、不做 EPG、不提供付费/DRM 源的访问。播放效果取决于上游、网络和接收设备，能力边界见[设计文档](../../../docs/DESIGN.zh-CN.md#现有边界)。
 ```
 
 - [ ] **Step 3: 中英对照自检**
@@ -373,7 +373,7 @@ EOF
 替换为：
 
 ```markdown
-`configure.py --source URL` can replace the default direct subscription; repeat it for multiple subscriptions. `--source` also accepts an existing local playlist file, stored as a `file://` URL; a value that is neither a URL nor an existing file is rejected. See [check your own playlist](../README.md#check-your-own-playlist) for the import path. The catalogue source is still appended for the full pipeline.
+`configure.py --source URL` can replace the default direct subscription; repeat it for multiple subscriptions. `--source` also accepts an existing local playlist file, stored as a `file://` URL; a value that is neither a URL nor an existing file is rejected. See [check your own playlist](../../../README.md#check-your-own-playlist) for the import path. The catalogue source is still appended for the full pipeline.
 ```
 
 （该行其余内容——FFmpeg 路径、`catalog.*` 配置项——保持不变。）
@@ -389,7 +389,7 @@ EOF
 替换为：
 
 ```markdown
-`configure.py --source URL` 可替换直接订阅，多次填写可加入多个订阅；`--source` 也接受已存在的本地播放列表文件，写入配置时转为 `file://` 地址；既非 URL 也非存在文件的值会被拒绝。导入路径见[快速开始](../README.zh-CN.md#检测自己的播放列表)。完整流程仍附带目录源。
+`configure.py --source URL` 可替换直接订阅，多次填写可加入多个订阅；`--source` 也接受已存在的本地播放列表文件，写入配置时转为 `file://` 地址；既非 URL 也非存在文件的值会被拒绝。导入路径见[快速开始](../../../README.zh-CN.md#检测自己的播放列表)。完整流程仍附带目录源。
 ```
 
 （该行其余内容保持不变。）

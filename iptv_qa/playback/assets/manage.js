@@ -72,7 +72,7 @@
   $('scope').addEventListener('change',function(){page=0;selected=null;refresh();});$('removed').addEventListener('change',function(){page=0;refresh();});
   $('query').addEventListener('input',function(){clearTimeout(timer);timer=setTimeout(function(){page=0;refresh();},300);});
   $('refresh').addEventListener('click',refresh);$('previous').addEventListener('click',function(){page-=1;refresh();});$('next').addEventListener('click',function(){page+=1;refresh();});
-  $('publish').addEventListener('click',function(){if(data)confirm('发布总表版本 '+data.revision+'：统一生成 Top5、兼容套表、今日补充和英语订阅，并同步桶。',function(){action({operation:'publish'});});});
+  $('publish').addEventListener('click',function(){if(data)confirm('发布总表版本 '+data.revision+'：统一生成 Top5、兼容套表、直播和英语订阅，并同步桶。',function(){action({operation:'publish'});});});
   $('backup').addEventListener('click',function(){if(data)action({operation:'backup'});});
   $('cancel').addEventListener('click',function(){$('preview').hidden=true;pending=null;});$('apply').addEventListener('click',function(){if(pending){var fn=pending;pending=null;fn();}});
   setInterval(function(){if(!$('workspace').hidden&&$('preview').hidden&&document.activeElement.tagName!=='INPUT')refresh();},10000);

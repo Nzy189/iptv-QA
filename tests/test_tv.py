@@ -247,7 +247,7 @@ while time.time() < end:
 class TVServiceTests(unittest.TestCase):
     PASSWORD = 'test-password-123'
     PLAYLISTS = (('top5', '综合频道 · Top5', 'iptv_ok.m3u'),
-                 ('set4', '今日补充', 'iptv_set4.m3u'),
+                 ('live', '直播频道', 'iptv_live.m3u'),
                  ('english', '英语频道', 'iptv_english.m3u'))
 
     @classmethod
@@ -472,7 +472,7 @@ class TVServiceTests(unittest.TestCase):
         self.assertEqual(status, 200)
         payload = json.loads(data)
         self.assertEqual([item['key'] for item in payload['playlists']],
-                         ['top5', 'set4', 'english'])
+                         ['top5', 'live', 'english'])
         self.assertEqual(payload['playlists'][0]['url'],
                          'http://127.0.0.1:%d/iptv_ok.m3u' % self.server.server_port)
 
@@ -536,17 +536,17 @@ class TVServiceTests(unittest.TestCase):
         self.assertEqual(json.loads(data)['sets'], 1)
         self.assertEqual(client.request('GET', '/tv/play/0/1')[0], 404)
 
-    def test_set4_is_independent_and_served_outside_scheduled_publication(self):
+    def test_live_view_is_independent_and_served_outside_scheduled_publication(self):
         extras = self.data / 'extras'
         extras.mkdir(exist_ok=True)
         content = ('#EXTM3U\n#EXTINF:-1,独立频道\n'
                    'http://127.0.0.1:%d/one/master.m3u8\n' % self.upstream.server_port)
-        (extras / 'iptv_set4.m3u').write_text(content, encoding='utf-8')
+        (extras / 'iptv_live.m3u').write_text(content, encoding='utf-8')
         client = self.logged_in_client()
-        status, _, data = client.request('GET', '/iptv_set4.m3u')
+        status, _, data = client.request('GET', '/iptv_live.m3u')
         self.assertEqual(status, 200)
-        self.assertEqual(data, (extras / 'iptv_set4.m3u').read_bytes())
-        source = 'http://127.0.0.1:%d/iptv_set4.m3u' % self.server.server_port
+        self.assertEqual(data, (extras / 'iptv_live.m3u').read_bytes())
+        source = 'http://127.0.0.1:%d/iptv_live.m3u' % self.server.server_port
         status, _, data = client.request('POST', '/api/tv/source', {'url': source})
         self.assertEqual(status, 200)
         payload = json.loads(data)

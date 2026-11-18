@@ -37,7 +37,8 @@ class TVPlugin:
 
     def __init__(self, password, static_dir=None, playlists=(), public_base='', ffmpeg=None,
                  transcode_limit=2, transcode_idle_seconds=90, library=None, race_func=None,
-                 prefetch_mode='light', prefetch_max_channels=16):
+                 prefetch_mode='light', prefetch_max_channels=16,
+                 prefetch_max_bytes=128 * 1024 * 1024):
         self.library = library
         self.library_api = None
         if library is not None:
@@ -54,7 +55,8 @@ class TVPlugin:
         self.race_lock = threading.Lock()
         self.prefetcher = Prefetcher(race_func=race_func, mode=prefetch_mode,
                                      max_channels=prefetch_max_channels,
-                                     ttl=TV_RACE_CACHE_SECONDS)
+                                     ttl=TV_RACE_CACHE_SECONDS,
+                                     max_bytes=prefetch_max_bytes)
         self.secret = secrets.token_bytes(32)
         self.token = hmac.new(self.secret, b'iptv-qa-tv-session-v1', hashlib.sha256).hexdigest()
         self.auth_tokens = OrderedDict()

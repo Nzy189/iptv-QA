@@ -209,7 +209,8 @@ class Server(ThreadingMixIn, HTTPServer):
 
 
 def create_player(password, public_base='', ffmpeg=None, transcode_limit=2, transcode_idle=90,
-                  library=None, prefetch_mode='light', prefetch_max_channels=16):
+                  library=None, prefetch_mode='light', prefetch_max_channels=16,
+                  prefetch_max_bytes=128 * 1024 * 1024):
     """Playback is optional; dashboard-only startup never imports the player."""
     from iptv_qa.playback.service import TVPlugin, assets_dir
     playlists = (('top5', '综合频道', 'iptv_ok.m3u'),
@@ -217,7 +218,8 @@ def create_player(password, public_base='', ffmpeg=None, transcode_limit=2, tran
                  ('english', '英语频道', 'iptv_english.m3u'))
     return TVPlugin(password, assets_dir(), playlists, public_base, ffmpeg=ffmpeg,
                     transcode_limit=transcode_limit, transcode_idle_seconds=transcode_idle, library=library,
-                    prefetch_mode=prefetch_mode, prefetch_max_channels=prefetch_max_channels)
+                    prefetch_mode=prefetch_mode, prefetch_max_channels=prefetch_max_channels,
+                    prefetch_max_bytes=prefetch_max_bytes)
 
 
 def main(argv=None, default_mode='all'):
@@ -237,6 +239,8 @@ def main(argv=None, default_mode='all'):
                         choices=('off', 'light', 'full'), help='Next-channel prewarm mode')
     parser.add_argument('--prefetch-max-channels', type=int, default=16,
                         help='Maximum channels kept warm at once')
+    parser.add_argument('--prefetch-max-bytes', type=int, default=128 * 1024 * 1024,
+                        help='Memory cap for prefetched manifest/segment bytes (full mode)')
     args = parser.parse_args(argv)
     if args.transcode_limit < 1 or args.transcode_idle < 1:
         parser.error('Transcode limit and idle seconds must be positive')
@@ -256,7 +260,8 @@ def main(argv=None, default_mode='all'):
         tv_plugin = create_player(password, args.public_base, args.ffmpeg,
                                   args.transcode_limit, args.transcode_idle, library=library,
                                   prefetch_mode=args.prefetch_mode,
-                                  prefetch_max_channels=args.prefetch_max_channels)
+                                  prefetch_max_channels=args.prefetch_max_channels,
+                                  prefetch_max_bytes=args.prefetch_max_bytes)
         logging.info('Web TV player enabled at /tv/')
     elif args.mode == 'all':
         logging.warning('IPTV_TV_PASSWORD not set; web TV player disabled')

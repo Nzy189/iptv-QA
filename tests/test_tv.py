@@ -979,5 +979,16 @@ class PrefetchConfigTests(unittest.TestCase):
         plugin.close()
 
 
+class PrefetchBytesConfigTests(unittest.TestCase):
+    def test_max_bytes_default_and_override(self):
+        from iptv_qa.server.http import create_player
+        a = create_player('pw')
+        self.assertEqual(a.prefetcher.max_bytes, 128 * 1024 * 1024)
+        a.close()
+        b = create_player('pw', prefetch_max_bytes=1000)
+        self.assertEqual(b.prefetcher.max_bytes, 1000)
+        b.close()
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

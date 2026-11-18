@@ -56,7 +56,7 @@ function player(count = 40, sets = 3) {
   };
   let code = fs.readFileSync(path.join(__dirname, '../iptv_qa/playback/assets/app.js'), 'utf8');
   const end = code.lastIndexOf('})();');
-  code = code.slice(0, end) + 'globalThis.playerTest = {state, play, advanceAfterFailure, armDestruction, removeFailed, reportCurrentLine, currentVideo: function(){return video;}};\n})();';
+  code = code.slice(0, end) + 'globalThis.playerTest = {state, play, advanceAfterFailure, armDestruction, removeFailed, reportCurrentLine, maybePrefetch, cyclePrefetch, currentVideo: function(){return video;}};\n})();';
   vm.runInNewContext(code, sandbox);
   const api = sandbox.playerTest;
   api.state.channels = Array.from({ length: count }, (_, i) => ({ name: 'Channel ' + (i + 1) }));
@@ -204,6 +204,34 @@ function player(count = 40, sets = 3) {
   p.elements['play-btn'].click();
   main.listeners.playing[0]();
   assert.ok(p.elements.overlay.hidden, 'actual playback dismisses the autoplay notice');
+}
+{
+  const p = player(); p.state.libraryScope = 'main';
+  const calls = [];
+  p.sandbox.fetch = (url, opts) => { calls.push([url, opts]); return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }); };
+  p.play(0);
+  assert.equal(p.state.prefetchMode, 'light');
+  p.elements['prefetch-btn'].click();
+  assert.equal(p.state.prefetchMode, 'full');
+  assert.equal(p.storage.get('tv-prefetch'), 'full');
+  const last = calls.filter(c => c[0] === '/api/tv/prefetch').pop();
+  assert.ok(last, 'toggling prefetch posts to the endpoint');
+  assert.equal(JSON.parse(last[1].body).mode, 'full');
+  assert.equal(JSON.parse(last[1].body).index, 0);
+}
+{
+  const p = player(); p.state.libraryScope = 'main'; p.state.prefetchMode = 'off';
+  const calls = [];
+  p.sandbox.fetch = (url) => { calls.push(url); return Promise.resolve({ ok: true, json: () => Promise.resolve({}) }); };
+  p.play(0); p.maybePrefetch();
+  assert.equal(calls.filter(u => u === '/api/tv/prefetch').length, 0, 'off mode never posts');
+}
+{
+  const p = player(); p.state.libraryScope = 'main'; p.state.order = 'random';
+  const calls = [];
+  p.sandbox.fetch = (url) => { calls.push(url); return Promise.resolve({ ok: true, json: () => Promise.resolve({}) }); };
+  p.play(0); p.maybePrefetch();
+  assert.equal(calls.filter(u => u === '/api/tv/prefetch').length, 0, 'random order never prefetches');
 }
 (async () => {
   function settle() { return new Promise(resolve => setImmediate(resolve)); }

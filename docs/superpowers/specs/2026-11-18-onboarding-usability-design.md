@@ -49,7 +49,7 @@
 
 ### 6. 测试
 
-`tests/` 新增针对 configure.py 本地路径转换的单测（URL 不变、本地路径转 file:// URI、不存在且非 URL 的值报错或原样保留——按实现定为报错）。
+`tests/` 新增针对 configure.py 本地路径转换的单测：URL 原样保留；存在的本地路径转 file:// URI；既不是 URL 也不存在的值直接报错退出（提示填写有效 URL 或文件路径）。
 
 ### 7. PROGRESS.md 更新
 

@@ -5,7 +5,7 @@ from pathlib import Path
 from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parents[1]
-IGNORED = {'.git', '__pycache__', '.venv', 'venv', 'data', 'build', 'dist', '.pytest_cache', '.claude'}
+IGNORED = {'.git', '__pycache__', '.venv', 'venv', 'data', 'build', 'dist', '.pytest_cache', '.claude', '.superpowers'}
 PRIVATE_NAMES = {'config.json', 'config.local.json', 'obs.env', '.env'}
 PATTERNS = (
     re.compile(r'-{5}BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-{5}'),
@@ -35,7 +35,10 @@ def main():
             continue
         if any(pattern.search(text) for pattern in PATTERNS):
             failures.append('{}: possible secret pattern (value suppressed)'.format(relative))
-        if path.suffix == '.md':
+        # Internal working documents (docs/superpowers/) quote example links that are
+        # relative to the documents they describe, not to the plan file itself.
+        internal_doc = len(relative.parts) > 1 and relative.parts[0] == 'docs' and relative.parts[1] == 'superpowers'
+        if path.suffix == '.md' and not internal_doc:
             for link in re.findall(r'\[[^\]]*\]\(([^)]+)\)', text):
                 target = link.split('#', 1)[0]
                 if not target or re.match(r'^[a-z]+:', target, re.I):

@@ -42,3 +42,4 @@ dist/
 
 # Local agent tooling
 .claude/
+.superpowers/

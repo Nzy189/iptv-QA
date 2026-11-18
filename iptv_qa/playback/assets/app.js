@@ -63,19 +63,30 @@
     });
   }
 
+  var autoplayNotice = false;
+
   function showOverlay(text) {
     overlayText.textContent = text;
     retryBtn.hidden = true;
     overlay.hidden = false;
+    autoplayNotice = false;
   }
 
   function showError(text, retry) {
     overlayText.textContent = text;
     retryBtn.hidden = !retry;
     overlay.hidden = false;
+    autoplayNotice = false;
   }
 
-  function hideOverlay() { overlay.hidden = true; }
+  function hideOverlay() { overlay.hidden = true; autoplayNotice = false; }
+
+  function showAutoplayNotice() {
+    overlayText.textContent = '浏览器限制自动播放，请点"播放"按钮';
+    retryBtn.hidden = true;
+    overlay.hidden = false;
+    autoplayNotice = true;
+  }
 
   function channelCount() { return state.channels.length; }
 
@@ -332,10 +343,11 @@
     video = el;
     bindVideoEvents(el);
     hideOverlay();
-    el.play().catch(function () {
-      if (state.generation !== race.generation) return;
+    el.play().catch(function (err) {
+      if (state.generation !== race.generation || video !== el) return;
+      if (err && err.name === 'AbortError') return;
       clearWatchdog();clearDestruction();
-      showOverlay('浏览器限制自动播放，请点"播放"按钮');
+      showAutoplayNotice();
     });
   }
 
@@ -426,10 +438,12 @@
       hls.on(Hls.Events.MANIFEST_PARSED, function () {
         if (state.hls !== hls || state.generation !== generation) return;
         hideOverlay();
-        video.play().catch(function () {
-          if (state.generation !== generation) return;
+        var el = video;
+        video.play().catch(function (err) {
+          if (state.generation !== generation || video !== el) return;
+          if (err && err.name === 'AbortError') return;
           clearWatchdog();clearDestruction();
-          showOverlay('浏览器限制自动播放，请点"播放"按钮');
+          showAutoplayNotice();
         });
       });
       hls.loadSource(url);
@@ -440,10 +454,12 @@
       video.addEventListener('loadedmetadata', function () {
         if (state.generation !== generation) return;
         hideOverlay();
-        video.play().catch(function () {
-          if (state.generation !== generation) return;
+        var el = video;
+        video.play().catch(function (err) {
+          if (state.generation !== generation || video !== el) return;
+          if (err && err.name === 'AbortError') return;
           clearWatchdog();clearDestruction();
-          showOverlay('浏览器限制自动播放，请点"播放"按钮');
+          showAutoplayNotice();
         });
       }, { once: true });
       video.addEventListener('error', function () {
@@ -685,7 +701,7 @@
   destructionBtn.addEventListener('click',function(){
     if(!state.libraryScope){showError('自定义订阅不受总表管理，不能清理',false);return;}
     state.destructive=!state.destructive;
-    destructionBtn.textContent='毁灭模式：'+(state.destructive?'开':'关');
+    destructionBtn.textContent='失效清理：'+(state.destructive?'开':'关');
     destructionBtn.setAttribute('aria-pressed',String(state.destructive));
     destructionBtn.classList.toggle('destructive',state.destructive);
     clearWatchdog();
@@ -713,7 +729,10 @@
   });
   function bindVideoEvents(el) {
     el.addEventListener('play', updatePlayBtn);
-    el.addEventListener('playing', clearDestruction);
+    el.addEventListener('playing', function () {
+      clearDestruction();
+      if (autoplayNotice) hideOverlay();
+    });
     el.addEventListener('pause', updatePlayBtn);
     el.addEventListener('progress', function () {
       if (el.buffered.length > 0 || el.readyState >= 2) clearWatchdog();

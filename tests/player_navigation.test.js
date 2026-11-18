@@ -174,6 +174,37 @@ function player(count = 40, sets = 3) {
   assert.ok(p.instances[0].destroyed && p.instances[1].destroyed, 'switching channels tears down the race');
   assert.ok(!p.elements['player-area'].children.includes(hidden), 'hidden race elements are removed');
 }
+{
+  const p = player(3, 3); p.state.channels[0].line_count = 3; p.play(0);
+  let staleCatch; const main = p.elements.video;
+  main.play = function () { return { catch(cb) { staleCatch = cb; } }; };
+  p.instances[0].events.manifest();
+  p.created[0].listeners.loadeddata[0]();
+  staleCatch({ name: 'NotAllowedError' });
+  assert.ok(p.elements.overlay.hidden, 'a stale autoplay rejection cannot shadow the promoted winner');
+}
+{
+  const p = player(3, 3); p.play(0);
+  let pendingCatch; const main = p.elements.video;
+  main.play = function () { return { catch(cb) { pendingCatch = cb; } }; };
+  p.instances[0].events.manifest();
+  pendingCatch({ name: 'AbortError' });
+  assert.ok(p.elements.overlay.hidden, 'a pause-interrupted play() is not an autoplay block');
+}
+{
+  const p = player(3, 3); p.play(0);
+  let pendingCatch; const main = p.elements.video;
+  main.play = function () { return { catch(cb) { pendingCatch = cb; } }; };
+  p.instances[0].events.manifest();
+  pendingCatch({ name: 'NotAllowedError' });
+  assert.ok(!p.elements.overlay.hidden && p.elements['overlay-text'].textContent.includes('自动播放'),
+    'a real autoplay block still shows the notice');
+  main.paused = true;
+  main.play = function () { this.paused = false; return Promise.resolve(); };
+  p.elements['play-btn'].click();
+  main.listeners.playing[0]();
+  assert.ok(p.elements.overlay.hidden, 'actual playback dismisses the autoplay notice');
+}
 (async () => {
   function settle() { return new Promise(resolve => setImmediate(resolve)); }
   function reportPlayer() {
@@ -246,5 +277,5 @@ function player(count = 40, sets = 3) {
       ['/tv/play/0/1?source_id=snap', '/tv/play/0/2?source_id=snap', '/tv/play/0/3?source_id=snap', '/tv/play/0/4?source_id=snap'],
       'returning to the channel races the remaining lines, never the reported one');
   }
-})().then(() => console.log('PLAYER_NAVIGATION_OK: backups, sequential scan, random non-repeat, stale events, watchdog, normal mode, hedged racing, report cleanup'))
+})().then(() => console.log('PLAYER_NAVIGATION_OK: backups, sequential scan, random non-repeat, stale events, watchdog, normal mode, hedged racing, autoplay notices, report cleanup'))
   .catch(error => { console.error(error); process.exit(1); });

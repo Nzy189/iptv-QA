@@ -34,6 +34,8 @@ HTTP 部署二选一：原 `iptv-qa-web.service` 保留报告与放映共用 808
 
 播放器密码来自私有 `tv.env`（参考 `config/tv.env.example`），不提交到 Git；FFmpeg 可经 `IPTV_TV_FFMPEG` 或 `--ffmpeg` 指定。`dashboard` 明确不加载播放器；`serve` 未设置密码时只提供报告；`play` 缺少密码时拒绝启动。报告页面不自动继承播放器鉴权。完整行为及边界见[放映指南](PLAYBACK.zh-CN.md)。
 
+要给电视 App（Apple TV / Android TV 播放器、VLC）提供订阅，在同一私有环境设置 `IPTV_TV_TOKENS`：一个或多个逗号分隔的令牌，启用 `/tv/playlist.m3u` 与竞速中继（见[放映指南](PLAYBACK.zh-CN.md#面向电视-app-的令牌竞速订阅)）。令牌依赖频道总表，只对这几个端点生效；修改环境并重启网页服务即吊销，留空即整体关闭。令牌按播放密码同等对待，向可信网络之外分享订阅链接前建议先加 HTTPS 反代。
+
 这里只更新源码及服务模板，不会自动重启已有部署。升级先在独立目录验证，然后由部署者选择服务模式、端口和环境配置。
 
 
@@ -47,7 +49,7 @@ python3 iptv_checker.py --config config.local.json --check-config
 python3 -m iptv_qa run --config config.local.json
 ```
 
-`configure.py --source URL` 可替换直接订阅，多次填写可加入多个订阅；完整流程仍附带目录源。静态 FFmpeg 请修改配置中的路径。`catalog.archive_url`、`catalog.metadata_url`、`catalog.playlist_urls` 控制发现输入；需要测试 Free-TV 时再明确加入其地址。
+`configure.py --source URL` 可替换直接订阅，多次填写可加入多个订阅；`--source` 也接受已存在的本地播放列表文件，写入配置时转为 `file://` 地址；既非 URL 也非存在文件的值会被拒绝。导入路径见[快速开始](../README.zh-CN.md#检测自己的播放列表)。完整流程仍附带目录源。静态 FFmpeg 请修改配置中的路径。`catalog.archive_url`、`catalog.metadata_url`、`catalog.playlist_urls` 控制发现输入；需要测试 Free-TV 时再明确加入其地址。
 
 ## 可选 OBS 上传
 

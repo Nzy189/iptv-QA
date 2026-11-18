@@ -34,6 +34,17 @@ Optional [channel management](docs/LIBRARY.md) provides one persistent library, 
 | **No more slow-start false kills** | The deep startup budget rises from 12 to 30 seconds: slow-starting but stable channels are kept, and startup speed only affects ranking, never qualification. |
 | **Unified channel library** | Channel identity separate from stream lines, versioned publication, reversible quarantine and encrypted backups, with up-to-five-line playback. |
 
+## What it does
+
+- Real video checks: decoded frames, media progression, HLS playlist freshness, and re-verification over a new connection at least 30 minutes later.
+- Deduplication and channel merging, with lines ranked by startup, recent results and historical reliability.
+- Ranked subscriptions: Top3, Top5, three single-source sets, a stable-only list and a separate English selection.
+- Browser playback: channel search, hedged multi-line racing, backup fallback and on-demand H.264/AAC transcoding.
+- Unattended operation: scheduling, per-host concurrency control, retry handling and publication guards.
+- Reporting: dashboard, exported CSV/JSON history and optional Huawei OBS uploads with stable object names.
+
+**Not included:** uninterrupted-playback guarantees, a bundled fixed channel library, EPG, or access to paid/DRM-protected sources. Playback depends on the source, network and receiver; see [capability boundaries](docs/DESIGN.md#known-limitations).
+
 ## Why iptv-QA?
 
 | Benefit | What you get |
@@ -101,31 +112,52 @@ The player includes channel search, number entry, random switching, automatic ba
 
 ## Quick start
 
-**Checking requirements:** Linux, Python 3, FFmpeg and ffprobe. FFmpeg 7.x is the reference version.
+**Requirements:** Linux, Python 3, FFmpeg and ffprobe. FFmpeg 7.x is the reference version. OBS and cloud storage are optional.
+
+### Check your own playlist
+
+Have an M3U subscription or file? Point iptv-QA at it and check only that:
 
 ```bash
 git clone https://github.com/Nzy189/iptv-QA.git
 cd iptv-QA
-python3 scripts/configure.py --output config.local.json --data-dir ./data
-python3 -m iptv_qa run --config config.local.json
+python3 scripts/configure.py --output config.local.json --data-dir ./data --source /path/to/your.m3u
+python3 -m iptv_qa check --config config.local.json
 ```
 
-After the first run, view the local results:
+- `--source` accepts an `http(s)` URL or a local playlist file, and can be repeated for several subscriptions.
+- `check` skips catalogue discovery and tests only the sources you configured.
+- Expect the first results in roughly 30–60 minutes: every surviving candidate is watched for at least 30 seconds of real video, then re-verified over a new connection at least 30 minutes later. The wait is the quality gate, not overhead.
+
+After the run, view the local results:
 
 ```bash
 python3 -m iptv_qa dashboard --data-dir ./data --host 127.0.0.1 --port 8088
 ```
 
-Open `http://127.0.0.1:8088/`. **OBS is off by default**; local checking, output files and the dashboard work without cloud storage. For your own sources, scheduling or optional uploads, follow the [deployment guide](docs/DEPLOYMENT.md).
+Open `http://127.0.0.1:8088/`. **OBS is off by default**; local checking, output files and the dashboard work without cloud storage.
 
-Start browser playback without running detection:
+### Run the full pipeline
+
+Without `--source`, `run` starts from the default public catalogues (tens of thousands of candidate endpoints), discovers and checks everything, and publishes the ranked subscriptions — this is how the example subscriptions above are produced. A full run can take hours depending on source count:
+
+```bash
+python3 scripts/configure.py --output config.local.json --data-dir ./data
+python3 -m iptv_qa run --config config.local.json
+```
+
+For scheduling and optional OBS uploads, follow the [deployment guide](docs/DEPLOYMENT.md).
+
+### Watch without checking
+
+Browser playback works without running QA — import any M3U:
 
 ```bash
 export IPTV_TV_PASSWORD='choose-a-private-password'
 python3 -m iptv_qa play --port 8089
 ```
 
-Open `http://127.0.0.1:8089/tv/` and import your M3U. FFmpeg is needed only for fallback transcoding. Source checkout uses the standard library; `python3 -m pip install .` also installs the CLI and complete player assets.
+Open `http://127.0.0.1:8089/tv/`. FFmpeg is needed only for fallback transcoding. Source checkout uses the standard library; `python3 -m pip install .` also installs the CLI and complete player assets.
 
 ## Documentation
 

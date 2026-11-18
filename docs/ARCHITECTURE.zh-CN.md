@@ -47,6 +47,7 @@ iptv_qa/
   detection/             # probing, decoding, observation, ranking
   publishing/            # optional OBS adapter and upload-only command
   reporting/             # SQLite history, HTML/CSV/JSON summaries
+  library/               # 可选频道总表数据库、管理接口与后台
   playback/              # browser player service
     proxy.py             # upstream fetching and HLS rewriting
     state.py             # playlist registry and sessions

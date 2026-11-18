@@ -7,6 +7,16 @@ from pathlib import Path
 import shutil
 
 
+def normalize_source(value):
+    """Pass URLs through; convert an existing local playlist file to a file:// URI."""
+    if '://' in value:
+        return value
+    path = Path(value).expanduser()
+    if path.is_file():
+        return path.resolve().as_uri()
+    raise ValueError('not a URL or an existing local playlist file: {}'.format(value))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', default='config.local.json')
@@ -24,7 +34,11 @@ def main():
                ffmpeg=shutil.which('ffmpeg') or '/usr/bin/ffmpeg',
                ffprobe=shutil.which('ffprobe') or '/usr/bin/ffprobe')
     if args.source:
-        cfg['sources'] = [{'name': 'subscription_{}'.format(i+1), 'url': url} for i,url in enumerate(args.source)]
+        try:
+            cfg['sources'] = [{'name': 'subscription_{}'.format(i+1), 'url': normalize_source(url)}
+                              for i, url in enumerate(args.source)]
+        except ValueError as exc:
+            parser.error(str(exc))
     cfg['sources'] = [s for s in cfg['sources'] if not s.get('catalog')] + [
         {'name':'tvlist_zh', 'url':(data/'catalog/zh.m3u').as_uri(), 'optional':True, 'catalog':True}]
     target.parent.mkdir(parents=True, exist_ok=True)

@@ -642,7 +642,7 @@
   destructionBtn.addEventListener('click',function(){
     if(!state.libraryScope){showError('自定义订阅不受总表管理，不能清理',false);return;}
     state.destructive=!state.destructive;
-    destructionBtn.textContent='毁灭模式：'+(state.destructive?'开':'关');
+    destructionBtn.textContent='失效清理：'+(state.destructive?'开':'关');
     destructionBtn.setAttribute('aria-pressed',String(state.destructive));
     destructionBtn.classList.toggle('destructive',state.destructive);
     clearWatchdog();

@@ -38,4 +38,4 @@ GitHub Actions 在 Linux 上验证 Python 3.10、3.12、3.14，真实媒体样�
 
 `tests/test_tiers.py` 覆盖瞬时失败降级、硬性排除、独立音频时长、稳定优先排序及发布策略迁移。`scripts/validate_quality.py --bin-dir PATH` 还用真实音视频 HLS 验证分层发布、代理取流及无音轨视频的拒绝。测试夹具通过不等于所有接收设备播放保证。
 
-运行 `node tests/player_navigation.test.js`，验证浏览器端备用耗尽后顺序换台、超过15台的遍历、随机不重复、迟到回调隔离及超时换台，不依赖外部直播。
+运行 `node tests/player_navigation.test.js`，验证浏览器端备用耗尽后顺序换台、超过15台的遍历、随机不重复、迟到回调隔离、超时换台、五线竞速、起播清理预算与自动播放提示处理，不依赖外部直播。

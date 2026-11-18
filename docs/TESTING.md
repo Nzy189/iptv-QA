@@ -38,4 +38,4 @@ Module regressions in `tests/test_modules.py` cover command/import independence,
 
 `tests/test_tiers.py` checks transient downgrade, hard exclusions, independent audio duration, stable ranking and publication-policy migration. `scripts/validate_quality.py --bin-dir PATH` additionally exercises tiered publication with real A/V HLS, proxy delivery and rejection of video without audio. Fixture success is not a receiver playback guarantee.
 
-Run `node tests/player_navigation.test.js` to exercise browser-side backup exhaustion, sequential scanning beyond 15 channels, random non-repetition, stale callback isolation and the watchdog without external streams.
+Run `node tests/player_navigation.test.js` to exercise browser-side backup exhaustion, sequential scanning beyond 15 channels, random non-repetition, stale callback isolation, the watchdog, five-line source racing, startup-cleanup budgeting and autoplay-notice handling without external streams.

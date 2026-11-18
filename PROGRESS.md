@@ -4,6 +4,12 @@
 
 ## Current work / 当前工作
 
+### Onboarding usability — README two-path quick start / 上手易用性：README 双路径快速开始（2026-11-18）
+
+- Implemented / 已实现：README (en/zh) quick start now leads with "Check your own playlist" (`configure.py --source` + `check`, skipping catalogue discovery), keeps the full-pipeline `run` path with scale/time expectations, and adds a plain "What it does / not included" feature list plus first-results timing (30–60 minutes). `configure.py --source` accepts local playlist files (converted to `file://` URLs) and rejects values that are neither URL nor existing file; paired DEPLOYMENT guides cross-link the import path. / README 双语快速开始改为"检测自己的源"（`--source` + `check`，跳过目录发现）与完整流水线两条路径，新增功能清单与首轮 30–60 分钟时间预期；`--source` 支持本地文件（转 `file://`）并拒绝无效值，部署文档双向链接。
+- Verification / 验证：new `tests/test_configure_script.py` (3 cases: local file → file:// URI, http URL passthrough, invalid value rejected) passes; full `python -m unittest discover -s tests -v` passes (154 tests: 142 passed, 12 skipped); `scripts/check_publication.py` reports PUBLICATION_AUDIT_OK files=131 secrets=0 broken_local_links=0 (working tree); local-M3U smoke run generated a config whose source resolved to a `file://` URI and passed `iptv_checker.py --check-config`. Documentation only beyond `scripts/configure.py` — no detection, ranking or publication behavior changed; no production deployment touched. / 新增三例配置脚本测试通过、全量单测 154 tests: 142 passed, 12 skipped、发布审计 PUBLICATION_AUDIT_OK files=131 secrets=0 broken_local_links=0 (working tree)；本地 M3U 冒烟生成 file:// 源并通过配置校验。除 configure.py 外纯文档改动，未触碰检测、发布与生产部署。
+- Audit scope / 审计范围：a separate audit of the committed source archive exited 1 on six example links in the implementation plan. The audit treated the snippets as links relative to the plan. The four delivered Markdown blocks and the deployment and design anchors were checked against the reviewed plan. The smoke configuration reported 2 sources and OBS disabled; temporary files were removed. / 单独审计提交树时，审计器将实施计划中的六个示例链接按计划文件位置解析，退出码为 1。已逐字核查两份 README 的四个区块及部署段落，并验证部署和设计锚点。冒烟配置校验报告 2 个源、OBS 关闭，临时文件已清理。
+
 ### Unified channel library — deployed / 统一频道总表：已部署（2026-11-18）
 
 - Authorized scope / 已确认范围：persistent channel/line database, authenticated management page, recoverable cleanup, versioned subscription publication and private OBS backups; main playback reads Top5 with up to five ranked lines, Set1–3 remain compatible exports. Related player/report pages change together. / 持久总表、管理页、可恢复清理、版本化发布及私有备份；综合入口改Top5，保留Set1–3输出，联动更新播放器和报告。

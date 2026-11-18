@@ -269,8 +269,13 @@
   function handleFatalError(data) {
     if (data.response && data.response.code === 401) { clearDestruction();clearWatchdog();showLogin();return; }
     var isMedia = window.Hls && data.type === Hls.ErrorTypes.MEDIA_ERROR;
-    if (isMedia && !state.transcoding && !state.destructive) {
-      showOverlay('画面编码浏览器不支持，启动服务器转码…');
+    // FLV and other non-HLS sources fail at manifest parsing; FFmpeg reads them
+    // fine, so route those through the server transcode like codec errors.
+    var isManifest = window.Hls && /manifestParsing/i.test(String(data.details || ''));
+    // The proxy rejects non-HLS manifests with HTTP 415 before buffering them.
+    var isNotHls = data.response && data.response.code === 415;
+    if ((isMedia || isManifest || isNotHls) && !state.transcoding && !state.destructive) {
+      showOverlay(isMedia ? '画面编码浏览器不支持，启动服务器转码…' : '该频道不是浏览器可播格式，启动服务器转码…');
       if (state.hls) { state.hls.destroy(); state.hls = null; }
       startPlayback(true);
       return;
@@ -294,15 +299,19 @@
     return race;
   }
 
-  function dropRaceCandidate(race, candidate, isMedia) {
+  function dropRaceCandidate(race, candidate, data) {
     if (race.ended || state.race !== race) return;
+    var isMedia = data && window.Hls && data.type === Hls.ErrorTypes.MEDIA_ERROR;
+    var isManifest = data && window.Hls && /manifestParsing/i.test(String(data.details || ''));
+    var isNotHls = data && data.response && data.response.code === 415;
     candidate.dropped = true;
     if (isMedia) race.mediaError = true;
+    if (isManifest || isNotHls) race.manifestError = true;
     if (candidate.hls && !candidate.hls.destroyed) { candidate.hls.destroy(); if (candidate.main) state.hls = null; }
     if (!candidate.main && candidate.video.parentNode) candidate.video.parentNode.removeChild(candidate.video);
     if (race.candidates.every(function (c) { return c.dropped; })) {
       endRace(race, null);
-      if (race.mediaError && !state.destructive) {
+      if ((race.mediaError || race.manifestError) && !state.destructive) {
         state.slot = 0;
         startPlayback(true);
       } else {
@@ -372,7 +381,7 @@
         rhls.on(Hls.Events.ERROR, function (event, data) {
           if (!data || !data.fatal) return;
           if (state.race === race && !race.ended) {
-            dropRaceCandidate(race, candidate, window.Hls && data.type === Hls.ErrorTypes.MEDIA_ERROR);
+            dropRaceCandidate(race, candidate, data);
             return;
           }
           if (state.hls === rhls) handleFatalError(data);
@@ -411,7 +420,7 @@
         if (state.hls !== hls || state.generation !== generation) return;
         if (!data.fatal) return;
         if (state.race && state.race.candidates[0] && state.race.candidates[0].hls === hls) {
-          dropRaceCandidate(state.race, state.race.candidates[0], window.Hls && data.type === Hls.ErrorTypes.MEDIA_ERROR);
+          dropRaceCandidate(state.race, state.race.candidates[0], data);
           return;
         }
         handleFatalError(data);
@@ -448,6 +457,11 @@
       }, { once: true });
       video.addEventListener('error', function () {
         if (state.generation !== generation) return;
+        if (!state.transcoding && !state.destructive) {
+          showOverlay('该频道不是浏览器可播格式，启动服务器转码…');
+          startPlayback(true);
+          return;
+        }
         if (advanceAfterFailure('播放出错')) return;
         showError('频道播放失败，可换台或重试', true);
       }, { once: true });

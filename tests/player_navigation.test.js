@@ -154,6 +154,28 @@ function player(count = 40, sets = 3) {
   assert.equal(p.instances[2].url, '/tv/transcode/0/0', 'codec-only failures fall back to server transcoding');
 }
 {
+  const p = player(3, 1); p.play(0);
+  p.instances[0].events.error('error', { fatal: true, type: 'network', details: 'manifestParsingError' });
+  assert.equal(p.instances[1].url, '/tv/transcode/0/0', 'a non-HLS (FLV) source falls back to server transcoding');
+  assert.ok(p.state.transcoding, 'the fallback marks the session as transcoding');
+}
+{
+  const p = player(3, 1); p.play(0);
+  p.instances[0].events.error('error', { fatal: true, type: 'network', details: 'manifestLoadError', response: { code: 415 } });
+  assert.equal(p.instances[1].url, '/tv/transcode/0/0', 'a 415 non-HLS rejection falls back to server transcoding');
+}
+{
+  const p = player(3, 3); p.state.channels[0].line_count = 2; p.play(0);
+  p.instances[1].events.error('error', { fatal: true, type: 'network', details: 'manifestParsingError' });
+  p.instances[0].events.error('error', { fatal: true, type: 'network', details: 'manifestParsingError' });
+  assert.equal(p.instances[2].url, '/tv/transcode/0/0', 'an all-FLV race falls back to server transcoding');
+}
+{
+  const p = player(3, 1); p.play(0);
+  p.instances[0].events.error('error', { fatal: true, type: 'network', details: 'manifestLoadError' });
+  assert.equal(p.instances.length, 1, 'a dead source (load error) does not trigger transcoding');
+}
+{
   const p = player(3, 3); p.state.channels[0].line_count = 3;
   p.elements['race-btn'].click();
   assert.equal(p.storage.get('tv-source-race'), '0');
@@ -310,5 +332,17 @@ function player(count = 40, sets = 3) {
       'non-library playback still starts on slot 0 synchronously');
     assert.equal(p.state.slot, 0);
   }
-})().then(() => console.log('PLAYER_NAVIGATION_OK: backups, sequential scan, random non-repeat, stale events, watchdog, normal mode, hedged racing, autoplay notices, report cleanup'))
+  {
+    // app.js and index.html must ship together: every element id referenced by
+    // the script has to exist in the served page. A mismatch crashes the whole
+    // player at startup (the vm harness auto-creates missing ids, so only this
+    // static check catches it).
+    const script = fs.readFileSync(path.join(__dirname, '../iptv_qa/playback/assets/app.js'), 'utf8');
+    const page = fs.readFileSync(path.join(__dirname, '../iptv_qa/playback/assets/index.html'), 'utf8');
+    const wanted = new Set();
+    for (const match of script.matchAll(/getElementById\('([^']+)'\)/g)) wanted.add(match[1]);
+    const missing = [...wanted].filter(id => !page.includes(`id="${id}"`));
+    assert.deepEqual(missing, [], 'every app.js element id exists in index.html');
+  }
+})().then(() => console.log('PLAYER_NAVIGATION_OK: backups, sequential scan, random non-repeat, stale events, watchdog, normal mode, hedged racing, autoplay notices, report cleanup, dom consistency'))
   .catch(error => { console.error(error); process.exit(1); });

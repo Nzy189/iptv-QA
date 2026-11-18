@@ -22,6 +22,7 @@ from .constants import (TV_COOKIE, STATIC_FILES, PLAYER_CSP, PLAY_PATH, STREAM_P
                         TV_PLAYLIST_PATH, TV_RACE_PATH, TV_RSTREAM_PATH, TV_RACE_VIEWS,
                         TV_RACE_CACHE_SECONDS, TV_RACE_CACHE_LIMIT)
 from .proxy import is_blocked_url, fetch_upstream, rewrite_playlist
+from .prefetch import Prefetcher
 from .state import Registry, Sessions
 from .transcoding import Transcoders
 
@@ -35,13 +36,14 @@ class TVPlugin:
     """Serves /tv/ pages and proxies only channels discovered in loaded playlists."""
 
     def __init__(self, password, static_dir=None, playlists=(), public_base='', ffmpeg=None,
-                 transcode_limit=2, transcode_idle_seconds=90, library=None, race_func=None):
+                 transcode_limit=2, transcode_idle_seconds=90, library=None, race_func=None,
+                 prefetch_mode='light', prefetch_max_channels=16):
         self.library = library
         self.library_api = None
         if library is not None:
             from iptv_qa.library.api import LibraryAPI
             self.library_api = LibraryAPI(library)
-        self.password = password.encode('utf-8')
+        self.password = password.encode('utf-8') if isinstance(password, str) else bytes(password)
         self.static_dir = Path(static_dir) if static_dir is not None else assets_dir()
         self.playlists = tuple(playlists)
         self.public_base = public_base
@@ -50,6 +52,9 @@ class TVPlugin:
         self.race_func = race_func
         self.race_cache = OrderedDict()
         self.race_lock = threading.Lock()
+        self.prefetcher = Prefetcher(race_func=race_func, mode=prefetch_mode,
+                                     max_channels=prefetch_max_channels,
+                                     ttl=TV_RACE_CACHE_SECONDS)
         self.secret = secrets.token_bytes(32)
         self.token = hmac.new(self.secret, b'iptv-qa-tv-session-v1', hashlib.sha256).hexdigest()
         self.auth_tokens = OrderedDict()
@@ -74,6 +79,7 @@ class TVPlugin:
         self._stopped.set()
         self._reaper.join(timeout=1)
         self.transcoders.close()
+        self.prefetcher.close()
 
     def session_token(self, handler):
         for part in handler.headers.get('Cookie', '').split(';'):
@@ -387,6 +393,9 @@ class TVPlugin:
         return True
 
     def _race_winner(self, view, channel_id, lines):
+        prefetched = self.prefetcher.get(view, channel_id)
+        if prefetched is not None:
+            return prefetched
         key = (view, channel_id)
         now = time.time()
         with self.race_lock:
@@ -403,6 +412,19 @@ class TVPlugin:
                 while len(self.race_cache) > TV_RACE_CACHE_LIMIT:
                     self.race_cache.popitem(last=False)
         return winner
+
+    def _prefetch_next(self, view, channel_id):
+        """Warm the channel after channel_id in the given view, if enabled."""
+        if not self.prefetcher.enabled() or self.library is None:
+            return
+        rows = self.library.view(view)
+        ids = [row['id'] for row in rows]
+        if channel_id not in ids or len(rows) < 2:
+            return
+        nxt = rows[(ids.index(channel_id) + 1) % len(rows)]
+        lines = [{'url': line['url'], 'headers': line['headers']} for line in nxt['lines']]
+        if lines:
+            self.prefetcher.warm(view, nxt['id'], lines)
 
     def serve_token_race(self, handler, view, channel_id):
         if not self.tv_tokens:
@@ -428,6 +450,7 @@ class TVPlugin:
                 self.send_json(handler, {'error': 'channel_or_line_inactive'}, 404)
                 return True
             winner = lines[0]
+        self._prefetch_next(view, channel_id)
         # the template is %-formatted later, so a literal % in the token must be doubled
         template = '/tv/rstream/%d?token=' + quote(token, safe='').replace('%', '%%')
         return self.serve_url(handler, winner['url'], winner['headers'], template)

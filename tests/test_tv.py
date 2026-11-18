@@ -2,6 +2,7 @@ import http.client
 import json
 import os
 import re
+import time
 from pathlib import Path
 import tempfile
 import threading
@@ -13,6 +14,8 @@ from urllib.parse import quote
 
 import tv
 import web
+
+from iptv_qa.playback.service import TVPlugin
 
 
 class UpstreamServer(ThreadingMixIn, HTTPServer):
@@ -756,6 +759,43 @@ class TokenRaceTests(unittest.TestCase):
         self.assertEqual(client.request('GET', '/api/tv/session?token=tok-alpha')[0], 401)
         self.assertEqual(client.request('GET', '/tv/play/0?token=tok-alpha')[0], 401)
         self.assertEqual(client.request('GET', '/tv/stream/1?token=tok-alpha')[0], 401)
+
+
+class PrefetchIntegrationTests(unittest.TestCase):
+    WINNER = {'index': 0, 'url': 'http://u/1.m3u8', 'headers': {}, 'final_url': 'http://u/1.m3u8'}
+
+    class _Lib:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def view(self, scope):
+            return self._rows
+
+    def _rows(self):
+        return [
+            {'id': 'c1', 'name': '1', 'group_name': 'g', 'lines': [{'url': 'http://u/1.m3u8', 'headers': {}}]},
+            {'id': 'c2', 'name': '2', 'group_name': 'g', 'lines': [{'url': 'http://u/2.m3u8', 'headers': {}}]},
+        ]
+
+    def test_prefetch_next_warms_following_channel(self):
+        plugin = TVPlugin(b'pw', library=self._Lib(self._rows()))
+        plugin.prefetcher.race_func = lambda lines: self.WINNER
+        plugin._prefetch_next('main', 'c1')
+        deadline = time.time() + 2
+        while time.time() < deadline and plugin.prefetcher.get('main', 'c2') is None:
+            time.sleep(0.02)
+        self.assertEqual(plugin.prefetcher.get('main', 'c2'), self.WINNER)
+        plugin.close()
+
+    def test_race_winner_uses_prefetched_without_racing(self):
+        def boom(lines):
+            raise AssertionError('should not race')
+        plugin = TVPlugin(b'pw', race_func=boom)
+        plugin.prefetcher.race_func = lambda lines: self.WINNER
+        plugin.prefetcher.warm('main', 'c', [], wait=True)
+        got = plugin._race_winner('main', 'c', [{'url': 'http://u/x.m3u8', 'headers': {}}])
+        self.assertEqual(got, self.WINNER)
+        plugin.close()
 
 
 if __name__ == '__main__':

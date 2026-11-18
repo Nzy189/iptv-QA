@@ -26,6 +26,7 @@
   var modeBtn = document.getElementById('mode-btn');
   var orderBtn = document.getElementById('order-btn');
   var raceBtn = document.getElementById('race-btn');
+  var prefetchBtn = document.getElementById('prefetch-btn');
   var playerArea = document.getElementById('player-area');
   var destructionBtn = document.getElementById('destruction-btn');
   var reportBtn = document.getElementById('report-btn');
@@ -43,7 +44,8 @@
                 order: localStorage.getItem('tv-zap-order') === 'random' ? 'random' : 'sequential',
                 libraryScope: null, sourceId: null, sourceSets: 1, destructive: false, destructionTimer: null,
                 destructionDeadline: 0, cleaned: 0, removing: false, reporting: false, triedChannels: {}, generation: 0, sourceRequest: 0, zapAttempts: 0, watchdog: null,
-                race: null, raceOn: localStorage.getItem('tv-source-race') !== '0' };
+                race: null, raceOn: localStorage.getItem('tv-source-race') !== '0',
+                prefetchMode: (localStorage.getItem('tv-prefetch') || 'light') };
 
   function showLogin() {
     loginWrap.hidden = false;
@@ -493,7 +495,24 @@
     video.pause();
     video.removeAttribute('src');
     video.load();
-    startPlayback(false);
+    if (state.prefetchMode !== 'off' && state.libraryScope && state.order === 'sequential') {
+      var hintGeneration = state.generation;
+      var hintUrl = '/api/tv/prefetch?index=' + i;
+      if (state.sourceId) hintUrl += '&source_id=' + encodeURIComponent(state.sourceId);
+      fetch(hintUrl).then(function (response) {
+        if (response.status === 401) { showLogin(); return null; }
+        return response.ok ? response.json() : null;
+      }).then(function (data) {
+        if (state.generation === hintGeneration && state.current === i) {
+          state.slot = (data && data.slot > 0) ? data.slot : 0;
+          startPlayback(false);
+        }
+      }).catch(function () {
+        if (state.generation === hintGeneration) startPlayback(false);
+      });
+    } else {
+      startPlayback(false);
+    }
   }
 
   function next() { var i=nextVisible(state.current);if(i>=0)play(i); }
@@ -683,6 +702,7 @@
     state.order = state.order === 'sequential' ? 'random' : 'sequential';
     localStorage.setItem('tv-zap-order', state.order);
     updateModeBtn();
+    if (state.order === 'sequential') maybePrefetch();
   });
   function updateRaceBtn() {
     raceBtn.textContent = '多源竞速：' + (state.raceOn ? '开' : '关');
@@ -693,6 +713,30 @@
     localStorage.setItem('tv-source-race', state.raceOn ? '1' : '0');
     updateRaceBtn();
   });
+  var PREFETCH_MODES = ['off', 'light', 'full'];
+  function updatePrefetchBtn() {
+    var label = { off: '关', light: '轻量', full: '完整' }[state.prefetchMode] || '轻量';
+    prefetchBtn.textContent = '下一台预热：' + label;
+    prefetchBtn.setAttribute('aria-pressed', String(state.prefetchMode !== 'off'));
+  }
+  function maybePrefetch() {
+    if (state.prefetchMode === 'off' || state.order !== 'sequential' || state.current < 0 || !state.libraryScope) return;
+    var path = '/api/tv/prefetch' + (state.sourceId ? '?source_id=' + encodeURIComponent(state.sourceId) : '');
+    api(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mode: state.prefetchMode, index: state.current, source_id: state.sourceId })
+    }).catch(function () {});
+  }
+  function cyclePrefetch() {
+    var i = PREFETCH_MODES.indexOf(state.prefetchMode);
+    state.prefetchMode = PREFETCH_MODES[(i + 1) % PREFETCH_MODES.length];
+    localStorage.setItem('tv-prefetch', state.prefetchMode);
+    updatePrefetchBtn();
+    maybePrefetch();
+  }
+  prefetchBtn.addEventListener('click', cyclePrefetch);
+  updatePrefetchBtn();
   reportBtn.addEventListener('click', reportCurrentLine);
   destructionBtn.addEventListener('click',function(){
     if(!state.libraryScope){showError('自定义订阅不受总表管理，不能清理',false);return;}
@@ -728,6 +772,7 @@
     el.addEventListener('playing', function () {
       clearDestruction();
       if (autoplayNotice) hideOverlay();
+      maybePrefetch();
     });
     el.addEventListener('pause', updatePlayBtn);
     el.addEventListener('progress', function () {

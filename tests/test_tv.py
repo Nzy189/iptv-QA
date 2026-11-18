@@ -1,7 +1,9 @@
 import http.client
+import io
 import json
 import os
 import re
+import time
 from pathlib import Path
 import tempfile
 import threading
@@ -13,6 +15,8 @@ from urllib.parse import quote
 
 import tv
 import web
+
+from iptv_qa.playback.service import TVPlugin
 
 
 class UpstreamServer(ThreadingMixIn, HTTPServer):
@@ -774,6 +778,234 @@ class TokenRaceTests(unittest.TestCase):
         self.assertEqual(client.request('GET', '/api/tv/session?token=tok-alpha')[0], 401)
         self.assertEqual(client.request('GET', '/tv/play/0?token=tok-alpha')[0], 401)
         self.assertEqual(client.request('GET', '/tv/stream/1?token=tok-alpha')[0], 401)
+
+
+class PrefetchIntegrationTests(unittest.TestCase):
+    WINNER = {'index': 0, 'url': 'http://u/1.m3u8', 'headers': {}, 'final_url': 'http://u/1.m3u8'}
+
+    class _Lib:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def view(self, scope):
+            return self._rows
+
+    def _rows(self):
+        return [
+            {'id': 'c1', 'name': '1', 'group_name': 'g', 'lines': [{'url': 'http://u/1.m3u8', 'headers': {}}]},
+            {'id': 'c2', 'name': '2', 'group_name': 'g', 'lines': [{'url': 'http://u/2.m3u8', 'headers': {}}]},
+        ]
+
+    def test_prefetch_next_warms_following_channel(self):
+        plugin = TVPlugin(b'pw', library=self._Lib(self._rows()))
+        plugin.prefetcher.race_func = lambda lines: self.WINNER
+        plugin._prefetch_next('main', 'c1')
+        deadline = time.time() + 2
+        while time.time() < deadline and plugin.prefetcher.get('main', 'c2') is None:
+            time.sleep(0.02)
+        self.assertEqual(plugin.prefetcher.get('main', 'c2'), self.WINNER)
+        plugin.close()
+
+    def test_race_winner_uses_prefetched_without_racing(self):
+        def boom(lines):
+            raise AssertionError('should not race')
+        plugin = TVPlugin(b'pw', race_func=boom)
+        plugin.prefetcher.race_func = lambda lines: self.WINNER
+        plugin.prefetcher.warm('main', 'c', [], wait=True)
+        got = plugin._race_winner('main', 'c', [{'url': 'http://u/x.m3u8', 'headers': {}}])
+        self.assertEqual(got, self.WINNER)
+        plugin.close()
+
+    class _Handler:
+        def __init__(self, path, body):
+            self.path = path
+            self.command = 'POST'
+            self.headers = {'Content-Length': str(len(body))}
+            self.rfile = io.BytesIO(body)
+            self.wfile = io.BytesIO()
+            self.status = None
+
+        def send_response(self, code):
+            self.status = code
+
+        def send_header(self, key, value):
+            pass
+
+        def end_headers(self):
+            pass
+
+    def test_prefetch_endpoint_warms_next_with_given_mode(self):
+        rows = self._rows()
+        plugin = TVPlugin(b'pw')
+        plugin.prefetcher.race_func = lambda lines: self.WINNER
+        session = {'source': 'x', 'library_scope': 'main', 'channels': rows,
+                   'source_id': 'sid', 'chain': ['x'], 'sets': {}}
+        plugin.playback_session = lambda handler: session
+        plugin.authorized = lambda handler: True
+        body = json.dumps({'mode': 'light', 'index': 0}).encode('utf-8')
+        handler = self._Handler('/api/tv/prefetch', body)
+        self.assertTrue(plugin.handle_prefetch(handler))
+        deadline = time.time() + 2
+        while time.time() < deadline and plugin.prefetcher.get('main', 'c2') is None:
+            time.sleep(0.02)
+        self.assertEqual(plugin.prefetcher.get('main', 'c2'), self.WINNER)
+        plugin.close()
+
+    def test_prefetch_endpoint_off_does_not_warm(self):
+        rows = self._rows()
+        plugin = TVPlugin(b'pw')
+        plugin.prefetcher.race_func = lambda lines: self.WINNER
+        session = {'source': 'x', 'library_scope': 'main', 'channels': rows,
+                   'source_id': 'sid', 'chain': ['x'], 'sets': {}}
+        plugin.playback_session = lambda handler: session
+        plugin.authorized = lambda handler: True
+        handler = self._Handler('/api/tv/prefetch', json.dumps({'mode': 'off', 'index': 0}).encode('utf-8'))
+        plugin.handle_prefetch(handler)
+        self.assertIsNone(plugin.prefetcher.get('main', 'c2'))
+        plugin.close()
+
+    def _hint_session(self, rows):
+        return {'source': 'x', 'library_scope': 'main', 'channels': rows,
+                'source_id': 'sid', 'chain': ['x'], 'sets': {}}
+
+    def test_prefetch_hint_returns_cached_winner_slot(self):
+        rows = self._rows()
+        plugin = TVPlugin(b'pw')
+        plugin.prefetcher.race_func = lambda lines: {'index': 2, 'url': 'http://u/x.m3u8',
+                                                     'headers': {}, 'final_url': 'http://u/x.m3u8'}
+        plugin.prefetcher.warm('main', 'c1', [{'url': 'http://u/1.m3u8', 'headers': {}}], wait=True)
+        plugin.playback_session = lambda handler: self._hint_session(rows)
+        handler = self._Handler('/api/tv/prefetch?index=0', b'')
+        self.assertTrue(plugin.handle_prefetch_hint(handler))
+        self.assertEqual(json.loads(handler.wfile.getvalue()), {'ok': True, 'slot': 2})
+        plugin.close()
+
+    def test_prefetch_hint_returns_minus_one_when_no_cache(self):
+        rows = self._rows()
+        plugin = TVPlugin(b'pw')
+        plugin.playback_session = lambda handler: self._hint_session(rows)
+        handler = self._Handler('/api/tv/prefetch?index=0', b'')
+        plugin.handle_prefetch_hint(handler)
+        self.assertEqual(json.loads(handler.wfile.getvalue()), {'ok': True, 'slot': -1})
+        plugin.close()
+
+    def test_prefetch_hint_returns_minus_one_when_mode_off(self):
+        rows = self._rows()
+        plugin = TVPlugin(b'pw')
+        plugin.prefetcher.race_func = lambda lines: {'index': 2, 'url': 'http://u/x.m3u8',
+                                                     'headers': {}, 'final_url': 'http://u/x.m3u8'}
+        plugin.prefetcher.warm('main', 'c1', [{'url': 'http://u/1.m3u8', 'headers': {}}], wait=True)
+        plugin.prefetcher.mode = 'off'
+        plugin.playback_session = lambda handler: self._hint_session(rows)
+        handler = self._Handler('/api/tv/prefetch?index=0', b'')
+        plugin.handle_prefetch_hint(handler)
+        self.assertEqual(json.loads(handler.wfile.getvalue()), {'ok': True, 'slot': -1})
+        plugin.close()
+
+    def test_prefetch_endpoint_off_mode_never_warms_even_when_body_light(self):
+        rows = self._rows()
+        plugin = TVPlugin(b'pw', prefetch_mode='off')
+        plugin.prefetcher.race_func = lambda lines: self.WINNER
+        plugin.playback_session = lambda handler: self._hint_session(rows)
+        plugin.authorized = lambda handler: True
+        handler = self._Handler('/api/tv/prefetch',
+                                json.dumps({'mode': 'light', 'index': 0}).encode('utf-8'))
+        self.assertTrue(plugin.handle_prefetch(handler))
+        self.assertEqual(json.loads(handler.wfile.getvalue()), {'ok': True, 'warmed': False})
+        self.assertIsNone(plugin.prefetcher.get('main', 'c2'))
+        plugin.close()
+
+    def test_prefetch_next_uses_given_rows_without_second_view(self):
+        rows = self._rows()
+
+        class _CountingLib:
+            def __init__(self, rows):
+                self._rows = rows
+                self.view_calls = 0
+
+            def view(self, scope):
+                self.view_calls += 1
+                return self._rows
+
+        library = _CountingLib(rows)
+        plugin = TVPlugin(b'pw', library=library)
+        plugin.prefetcher.race_func = lambda lines: self.WINNER
+        plugin._prefetch_next('main', 'c1', rows)
+        deadline = time.time() + 2
+        while time.time() < deadline and plugin.prefetcher.get('main', 'c2') is None:
+            time.sleep(0.02)
+        self.assertEqual(plugin.prefetcher.get('main', 'c2'), self.WINNER)
+        self.assertEqual(library.view_calls, 0)
+        plugin.close()
+
+
+class ServeCacheTests(unittest.TestCase):
+    class _Handler:
+        def __init__(self, range_header=None):
+            self.command = 'GET'
+            self.headers = {} if range_header is None else {'Range': range_header}
+            self.wfile = io.BytesIO()
+
+        def send_response(self, code):
+            self.status = code
+
+        def send_header(self, key, value):
+            pass
+
+        def end_headers(self):
+            pass
+
+    def test_serves_cached_segment_without_upstream(self):
+        plugin = TVPlugin(b'pw')
+        plugin.prefetcher.max_bytes = 100000
+        plugin.prefetcher._store_bytes('http://u/seg.ts', 200, 'video/mp2t', b'\x47' * 188, 'http://u/seg.ts')
+        handler = self._Handler()
+        with mock.patch('iptv_qa.playback.service.fetch_upstream',
+                        side_effect=AssertionError('no upstream on cache hit')):
+            self.assertTrue(plugin.serve_url(handler, 'http://u/seg.ts', {}))
+        self.assertEqual(handler.wfile.getvalue(), b'\x47' * 188)
+        plugin.close()
+
+    def test_range_request_bypasses_cache(self):
+        plugin = TVPlugin(b'pw')
+        plugin.prefetcher.max_bytes = 100000
+        plugin.prefetcher._store_bytes('http://u/seg.ts', 200, 'video/mp2t', b'\x47' * 188, 'http://u/seg.ts')
+        handler = self._Handler(range_header='bytes=0-10')
+        calls = []
+
+        def fake_fetch(url, headers, cap, range_header=None, require_playlist=False):
+            calls.append(url)
+            return 206, {}, b'\x47' * 11, url
+
+        with mock.patch('iptv_qa.playback.service.fetch_upstream', side_effect=fake_fetch):
+            plugin.serve_url(handler, 'http://u/seg.ts', {})
+        self.assertEqual(calls, ['http://u/seg.ts'])
+        plugin.close()
+
+
+class PrefetchConfigTests(unittest.TestCase):
+    def test_create_player_passes_prefetch_mode(self):
+        from iptv_qa.server.http import create_player
+        plugin = create_player('pw', prefetch_mode='off')
+        self.assertEqual(plugin.prefetcher.mode, 'off')
+        plugin.close()
+
+    def test_invalid_mode_falls_back_to_light(self):
+        from iptv_qa.server.http import create_player
+        plugin = create_player('pw', prefetch_mode='bogus')
+        self.assertEqual(plugin.prefetcher.mode, 'light')
+        plugin.close()
+
+
+class PrefetchBytesConfigTests(unittest.TestCase):
+    def test_max_bytes_default_and_override(self):
+        from iptv_qa.server.http import create_player
+        a = create_player('pw')
+        self.assertEqual(a.prefetcher.max_bytes, 128 * 1024 * 1024)
+        a.close()
+        b = create_player('pw', prefetch_max_bytes=1000)
+        self.assertEqual(b.prefetcher.max_bytes, 1000)
+        b.close()
 
 
 if __name__ == '__main__':

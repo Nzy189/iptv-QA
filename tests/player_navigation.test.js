@@ -56,7 +56,7 @@ function player(count = 40, sets = 3) {
   };
   let code = fs.readFileSync(path.join(__dirname, '../iptv_qa/playback/assets/app.js'), 'utf8');
   const end = code.lastIndexOf('})();');
-  code = code.slice(0, end) + 'globalThis.playerTest = {state, play, advanceAfterFailure, armDestruction, removeFailed, reportCurrentLine, currentVideo: function(){return video;}};\n})();';
+  code = code.slice(0, end) + 'globalThis.playerTest = {state, play, advanceAfterFailure, armDestruction, removeFailed, reportCurrentLine, maybePrefetch, cyclePrefetch, currentVideo: function(){return video;}};\n})();';
   vm.runInNewContext(code, sandbox);
   const api = sandbox.playerTest;
   api.state.channels = Array.from({ length: count }, (_, i) => ({ name: 'Channel ' + (i + 1) }));
@@ -110,7 +110,7 @@ function player(count = 40, sets = 3) {
   assert.equal(p.state.current,1,'all five lines must fail before advancing');
 }
 {
-  const p=player(3,5);p.state.libraryScope='main';p.state.sourceId='snapshot';p.state.channels[0].id='fixed-channel';
+  const p=player(3,5);p.state.libraryScope='main';p.state.sourceId='snapshot';p.state.prefetchMode='off';p.state.channels[0].id='fixed-channel';
   p.play(0);p.elements['destruction-btn'].click();
   assert.equal(p.state.destructive,true);assert.ok(p.state.destructionTimer);
   p.fail();assert.equal(p.state.slot,1);
@@ -227,11 +227,39 @@ function player(count = 40, sets = 3) {
   main.listeners.playing[0]();
   assert.ok(p.elements.overlay.hidden, 'actual playback dismisses the autoplay notice');
 }
+{
+  const p = player(); p.state.libraryScope = 'main';
+  const calls = [];
+  p.sandbox.fetch = (url, opts) => { calls.push([url, opts]); return Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) }); };
+  p.play(0);
+  assert.equal(p.state.prefetchMode, 'light');
+  p.elements['prefetch-btn'].click();
+  assert.equal(p.state.prefetchMode, 'full');
+  assert.equal(p.storage.get('tv-prefetch'), 'full');
+  const last = calls.filter(c => c[0] === '/api/tv/prefetch').pop();
+  assert.ok(last, 'toggling prefetch posts to the endpoint');
+  assert.equal(JSON.parse(last[1].body).mode, 'full');
+  assert.equal(JSON.parse(last[1].body).index, 0);
+}
+{
+  const p = player(); p.state.libraryScope = 'main'; p.state.prefetchMode = 'off';
+  const calls = [];
+  p.sandbox.fetch = (url) => { calls.push(url); return Promise.resolve({ ok: true, json: () => Promise.resolve({}) }); };
+  p.play(0); p.maybePrefetch();
+  assert.equal(calls.filter(u => u === '/api/tv/prefetch').length, 0, 'off mode never posts');
+}
+{
+  const p = player(); p.state.libraryScope = 'main'; p.state.order = 'random';
+  const calls = [];
+  p.sandbox.fetch = (url) => { calls.push(url); return Promise.resolve({ ok: true, json: () => Promise.resolve({}) }); };
+  p.play(0); p.maybePrefetch();
+  assert.equal(calls.filter(u => u === '/api/tv/prefetch').length, 0, 'random order never prefetches');
+}
 (async () => {
   function settle() { return new Promise(resolve => setImmediate(resolve)); }
   function reportPlayer() {
     const p = player(3, 5);
-    p.state.libraryScope = 'main'; p.state.sourceId = 'snap';
+    p.state.libraryScope = 'main'; p.state.sourceId = 'snap'; p.state.prefetchMode = 'off';
     p.state.channels[0].id = 'ch0'; p.state.channels[0].line_count = 5;
     p.calls = []; p.reply = { revision: 7, channel_quarantined: false };
     p.sandbox.fetch = (path, options) => {
@@ -282,6 +310,27 @@ function player(count = 40, sets = 3) {
     p.elements['report-btn'].click();
     await settle();
     assert.equal(p.calls.length, 0, 'report does nothing outside managed sources');
+  }
+  {
+    const p = player(); p.state.libraryScope = 'main';
+    p.state.prefetchMode = 'light'; p.state.order = 'sequential';
+    p.sandbox.fetch = (url) => {
+      if (url.indexOf('/api/tv/prefetch') === 0) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, slot: 2 }) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    };
+    p.play(0);
+    await settle(); await settle();
+    assert.equal(p.state.slot, 2, 'browser starts on the server-prewarmed winner slot');
+    assert.deepEqual(p.instances.map(h => h.url), ['/tv/play/0/2'],
+      'the prewarmed winner slot is loaded from the hint');
+  }
+  {
+    const p = player(); p.play(0);
+    assert.equal(p.instances[0].url, '/tv/play/0/0',
+      'non-library playback still starts on slot 0 synchronously');
+    assert.equal(p.state.slot, 0);
   }
   {
     // app.js and index.html must ship together: every element id referenced by

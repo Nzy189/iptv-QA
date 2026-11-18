@@ -10,11 +10,18 @@ Repeat --rounds times.
 
 The benchmark uses only the token racing path (APTV-style): the server
 prewarms the channel AFTER the one raced (in view order), so the warm group
-first races --prev (triggering server-side prewarm of --channel), sleeps
-~1s, then times a race request for --channel that should hit the prewarmed
-cache. --prev must therefore be the channel immediately BEFORE --channel in
-the same view; otherwise the prewarm targets a different channel and the
-warm group measures cold timing. No browser session cookie is needed.
+first races --prev (triggering server-side prewarm of --channel), waits
+--warm-wait seconds, then times a race request for --channel that should hit
+the prewarmed cache. The server-side prewarm runs in a background thread, so
+a short wait may still sample a cold cache; use a larger --warm-wait if the
+warm group looks cold. --prev must therefore be the channel immediately
+BEFORE --channel in the same view; otherwise the prewarm targets a different
+channel and the warm group measures cold timing. No browser session cookie
+is needed.
+
+Note that timed_race only reads a single byte (read(1)), so it measures the
+manifest time-to-first-byte: it mainly reflects winner/race elimination, not
+the segment byte-cache benefit of the full tier.
 """
 import argparse
 import time
@@ -37,6 +44,8 @@ def main():
     parser.add_argument('--channel', required=True)
     parser.add_argument('--prev', required=True)
     parser.add_argument('--rounds', type=int, default=5)
+    parser.add_argument('--warm-wait', type=float, default=8.0,
+                        help='seconds to wait after racing --prev before timing the warm request')
     args = parser.parse_args()
     cold = []
     for i in range(args.rounds):
@@ -47,7 +56,7 @@ def main():
     for _ in range(args.rounds):
         # racing the previous channel triggers server-side prewarm of this one
         timed_race(args.base, args.token, args.view, args.prev)
-        time.sleep(1.0)
+        time.sleep(args.warm_wait)
         warm.append(timed_race(args.base, args.token, args.view, args.channel))
     print('cold avg %.3fs  warm avg %.3fs' % (sum(cold) / len(cold), sum(warm) / len(warm)))
     print('cold', ['%.3f' % x for x in cold])

@@ -4,7 +4,7 @@ import time
 from collections import OrderedDict
 from urllib.parse import urljoin
 
-from .constants import MAX_PLAYLIST_BYTES, MAX_SEGMENT_BYTES
+from .constants import BOM, MAX_PLAYLIST_BYTES, MAX_SEGMENT_BYTES
 from .proxy import fetch_upstream
 
 
@@ -69,7 +69,7 @@ class Prefetcher:
                 self._entries.pop(old_key, None)
             while len(self._entries) > self.max_channels:
                 self._entries.popitem(last=False)
-        if mode == 'full' and self.max_bytes > 0:
+        if mode == 'full' and self.mode == 'full' and self.max_bytes > 0:
             try:
                 self._warm_bytes(winner)
             except Exception:
@@ -145,10 +145,13 @@ class Prefetcher:
 
     def _warm_bytes(self, winner):
         status, hdrs, data, final_url = self._fetch(winner['url'], winner['headers'], MAX_PLAYLIST_BYTES)
+        if data[:3] == BOM:
+            data = data[3:]
         if not data or data.lstrip(b'\r\n \t')[:7] != b'#EXTM3U':
             return
         ctype = hdrs.get('Content-Type') or 'application/vnd.apple.mpegurl'
-        self._store_bytes(winner['url'], status, ctype, data, final_url)
+        if 200 <= status < 300:
+            self._store_bytes(winner['url'], status, ctype, data, final_url)
         text = data.decode('utf-8', 'replace')
         if '#EXT-X-STREAM-INF' in text:
             variants = self._media_uris(text)
@@ -156,10 +159,13 @@ class Prefetcher:
                 return
             variant_url = urljoin(final_url, variants[0])
             status, hdrs, data, final_url = self._fetch(variant_url, winner['headers'], MAX_PLAYLIST_BYTES)
+            if data[:3] == BOM:
+                data = data[3:]
             if not data or data.lstrip(b'\r\n \t')[:7] != b'#EXTM3U':
                 return
             ctype = hdrs.get('Content-Type') or 'application/vnd.apple.mpegurl'
-            self._store_bytes(variant_url, status, ctype, data, final_url)
+            if 200 <= status < 300:
+                self._store_bytes(variant_url, status, ctype, data, final_url)
             text = data.decode('utf-8', 'replace')
         for uri in self._media_uris(text)[:2]:
             seg_url = urljoin(final_url, uri)
@@ -167,7 +173,8 @@ class Prefetcher:
                 status, hdrs, seg, seg_final = self._fetch(seg_url, winner['headers'], MAX_SEGMENT_BYTES)
             except Exception:
                 continue
-            self._store_bytes(seg_url, status, hdrs.get('Content-Type') or 'application/octet-stream', seg, seg_final)
+            if 200 <= status < 300:
+                self._store_bytes(seg_url, status, hdrs.get('Content-Type') or 'application/octet-stream', seg, seg_final)
 
     def close(self):
         self._stopped.set()

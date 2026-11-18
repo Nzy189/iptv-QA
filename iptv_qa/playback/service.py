@@ -12,13 +12,15 @@ from collections import OrderedDict
 from pathlib import Path
 from urllib import request as urlrequest
 from urllib.error import URLError
-from urllib.parse import unquote, urljoin, urlsplit, parse_qs
+from urllib.parse import unquote, urljoin, urlsplit, parse_qs, quote
 
 from iptv_qa.common.playlists import parse_playlist
 
 from .constants import (TV_COOKIE, STATIC_FILES, PLAYER_CSP, PLAY_PATH, STREAM_PATH, TRANSCODE_PATH,
                         TSEG_PATH, SEGMENT_NAME, MAX_BODY_BYTES, MAX_PLAYLIST_BYTES,
-                        MAX_SEGMENT_BYTES, TRANSCODE_START_TIMEOUT, BOM)
+                        MAX_SEGMENT_BYTES, TRANSCODE_START_TIMEOUT, BOM,
+                        TV_PLAYLIST_PATH, TV_RACE_PATH, TV_RSTREAM_PATH, TV_RACE_VIEWS,
+                        TV_RACE_CACHE_SECONDS, TV_RACE_CACHE_LIMIT)
 from .proxy import is_blocked_url, fetch_upstream, rewrite_playlist
 from .state import Registry, Sessions
 from .transcoding import Transcoders
@@ -33,7 +35,7 @@ class TVPlugin:
     """Serves /tv/ pages and proxies only channels discovered in loaded playlists."""
 
     def __init__(self, password, static_dir=None, playlists=(), public_base='', ffmpeg=None,
-                 transcode_limit=2, transcode_idle_seconds=90, library=None):
+                 transcode_limit=2, transcode_idle_seconds=90, library=None, race_func=None):
         self.library = library
         self.library_api = None
         if library is not None:
@@ -43,6 +45,11 @@ class TVPlugin:
         self.static_dir = Path(static_dir) if static_dir is not None else assets_dir()
         self.playlists = tuple(playlists)
         self.public_base = public_base
+        self.tv_tokens = [part.strip() for part in
+                          (os.environ.get('IPTV_TV_TOKENS') or '').split(',') if part.strip()]
+        self.race_func = race_func
+        self.race_cache = OrderedDict()
+        self.race_lock = threading.Lock()
         self.secret = secrets.token_bytes(32)
         self.token = hmac.new(self.secret, b'iptv-qa-tv-session-v1', hashlib.sha256).hexdigest()
         self.auth_tokens = OrderedDict()
@@ -139,6 +146,15 @@ class TVPlugin:
         match = TSEG_PATH.match(path)
         if match:
             return self.serve_transcode_segment(handler, match.group(1), match.group(2))
+        match = TV_PLAYLIST_PATH.match(path)
+        if match:
+            return self.serve_token_playlist(handler)
+        match = TV_RACE_PATH.match(path)
+        if match:
+            return self.serve_token_race(handler, match.group(1), match.group(2))
+        match = TV_RSTREAM_PATH.match(path)
+        if match:
+            return self.serve_token_stream(handler, int(match.group(1)))
         return False
 
     def handle_post(self, handler):
@@ -325,6 +341,113 @@ class TVPlugin:
             return True
         return self.serve_url(handler, pair[0], pair[1])
 
+    def token_authorized(self, handler):
+        """Returns the presented token string when it matches a configured token."""
+        value = parse_qs(urlsplit(handler.path).query).get('token', [''])[0]
+        if not value:
+            return None
+        given = value.encode('utf-8')
+        for token in self.tv_tokens:
+            if hmac.compare_digest(given, token.encode('utf-8')):
+                return value
+        return None
+
+    def serve_token_playlist(self, handler):
+        if not self.tv_tokens:
+            self.send_json(handler, {'error': 'not_found'}, 404)
+            return True
+        token = self.token_authorized(handler)
+        if token is None:
+            self.send_json(handler, {'error': 'unauthorized'}, 401)
+            return True
+        if self.library is None:
+            self.send_json(handler, {'error': 'library_not_configured'}, 404)
+            return True
+        query = parse_qs(urlsplit(handler.path).query)
+        view = query.get('view', ['main'])[0]
+        if view not in TV_RACE_VIEWS:
+            self.send_json(handler, {'error': 'not_found'}, 404)
+            return True
+        base = (self.public_base.rstrip('/') if self.public_base
+                else 'http://%s' % (handler.headers.get('Host') or '127.0.0.1'))
+        lines = ['#EXTM3U']
+        for row in self.library.view(view):
+            attrs = json.loads(row['metadata'])
+            attrs['group-title'] = row['group_name']
+            attrs['channel-id'] = row['id']
+            prefix = '#EXTINF:-1' + ''.join(
+                ' %s="%s"' % (key, str(value).replace('"', '').replace('\n', '').replace('\r', ''))
+                for key, value in attrs.items()
+                if key in ('tvg-id', 'tvg-name', 'tvg-logo', 'group-title', 'channel-id'))
+            lines.append(prefix + ',' + row['name'])
+            lines.append('%s/tv/race/%s/%s?token=%s' % (
+                base, view, quote(row['id'], safe=''), quote(token, safe='')))
+        self.send_media(handler, 200, ('\n'.join(lines) + '\n').encode('utf-8'),
+                        'application/vnd.apple.mpegurl')
+        return True
+
+    def _race_winner(self, view, channel_id, lines):
+        key = (view, channel_id)
+        now = time.time()
+        with self.race_lock:
+            hit = self.race_cache.get(key)
+            if hit and hit[0] > now:
+                return hit[1]
+        if self.race_func is None:
+            from iptv_qa.playback.race import race_lines
+            self.race_func = race_lines
+        winner = self.race_func(lines)
+        if winner is not None:
+            with self.race_lock:
+                self.race_cache[key] = (now + TV_RACE_CACHE_SECONDS, winner)
+                while len(self.race_cache) > TV_RACE_CACHE_LIMIT:
+                    self.race_cache.popitem(last=False)
+        return winner
+
+    def serve_token_race(self, handler, view, channel_id):
+        if not self.tv_tokens:
+            self.send_json(handler, {'error': 'not_found'}, 404)
+            return True
+        token = self.token_authorized(handler)
+        if token is None:
+            self.send_json(handler, {'error': 'unauthorized'}, 401)
+            return True
+        if self.library is None or view not in TV_RACE_VIEWS:
+            self.send_json(handler, {'error': 'not_found'}, 404)
+            return True
+        channel = next((row for row in self.library.view(view)
+                        if row['id'] == channel_id), None)
+        if channel is None:
+            self.send_json(handler, {'error': 'channel_not_found'}, 404)
+            return True
+        lines = [{'url': line['url'], 'headers': line['headers']}
+                 for line in channel['lines']]
+        winner = self._race_winner(view, channel_id, lines)
+        if winner is None:
+            if not lines:
+                self.send_json(handler, {'error': 'channel_or_line_inactive'}, 404)
+                return True
+            winner = lines[0]
+        # the template is %-formatted later, so a literal % in the token must be doubled
+        template = '/tv/rstream/%d?token=' + quote(token, safe='').replace('%', '%%')
+        return self.serve_url(handler, winner['url'], winner['headers'], template)
+
+    def serve_token_stream(self, handler, rid):
+        if not self.tv_tokens:
+            self.send_json(handler, {'error': 'not_found'}, 404)
+            return True
+        token = self.token_authorized(handler)
+        if token is None:
+            self.send_json(handler, {'error': 'unauthorized'}, 401)
+            return True
+        pair = self.registry.resolve(rid)
+        if pair is None:
+            self.send_json(handler, {'error': 'unknown_stream'}, 404)
+            return True
+        # the template is %-formatted later, so a literal % in the token must be doubled
+        template = '/tv/rstream/%d?token=' + quote(token, safe='').replace('%', '%%')
+        return self.serve_url(handler, pair[0], pair[1], template)
+
     def serve_playlists(self, handler):
         links = []
         for key, label, name in self.playlists:
@@ -425,7 +548,7 @@ class TVPlugin:
         self.send_media(handler, 200, path.read_bytes(), 'video/mp2t')
         return True
 
-    def serve_url(self, handler, url, headers):
+    def serve_url(self, handler, url, headers, url_template=None):
         range_header = handler.headers.get('Range')
         try:
             status, response_headers, data, final_url = fetch_upstream(url, headers, MAX_SEGMENT_BYTES, range_header)
@@ -435,7 +558,8 @@ class TVPlugin:
         if data[:3] == BOM:
             data = data[3:]
         if data.lstrip(b'\r\n \t')[:7] == b'#EXTM3U':
-            text = rewrite_playlist(data.decode('utf-8', 'replace'), final_url, headers, self.registry.register)
+            text = rewrite_playlist(data.decode('utf-8', 'replace'), final_url, headers,
+                                   self.registry.register, url_template)
             self.send_media(handler, 200, text.encode('utf-8'),
                             'application/vnd.apple.mpegurl; charset=utf-8')
             return True

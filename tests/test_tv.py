@@ -1,6 +1,7 @@
 import http.client
 import json
 import os
+import re
 from pathlib import Path
 import tempfile
 import threading
@@ -8,6 +9,7 @@ import unittest
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from unittest import mock
+from urllib.parse import quote
 
 import tv
 import web
@@ -574,6 +576,173 @@ class TVServiceTests(unittest.TestCase):
     def test_unknown_post_returns_404(self):
         client = self.logged_in_client()
         self.assertEqual(client.request('POST', '/api/unknown')[0], 404)
+
+
+class TokenRaceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.upstream = UpstreamServer(('127.0.0.1', 0))
+        cls.upstream_thread = threading.Thread(target=cls.upstream.serve_forever)
+        cls.upstream_thread.daemon = True
+        cls.upstream_thread.start()
+        port = cls.upstream.server_port
+        cls.temp = tempfile.TemporaryDirectory()
+        root = Path(cls.temp.name)
+        (root / 'summaries').mkdir()
+        (root / 'summaries' / 'iptv_history.json').write_text(
+            json.dumps({'runs': [], 'generated_at': '2026-11-18T00:00:00Z'}), encoding='utf-8')
+        (root / 'status.json').write_text(json.dumps({'state': 'complete'}), encoding='utf-8')
+        from iptv_qa.library.store import Library
+        cls.library = Library(root / 'library' / 'catalog.sqlite3')
+        content = ('#EXTM3U\n'
+                   '#EXTINF:-1 tvg-id="race.test" tvg-logo="http://logo.test/race.png" '
+                   'group-title="Race",竞速频道\n'
+                   'http://127.0.0.1:%d/two/master.m3u8\n'
+                   '#EXTINF:-1 tvg-id="race.test" group-title="Race",竞速频道\n'
+                   'http://127.0.0.1:%d/one/master.m3u8\n' % (port, port))
+        cls.library.ingest('main', content, 'token-tests')
+        cls.channel = cls.library.view('main')[0]
+        cls.race_state = {'fail': False, 'calls': 0}
+
+        def fake_race(lines):
+            cls.race_state['calls'] += 1
+            if cls.race_state['fail']:
+                return None
+            return {'index': 1, 'url': lines[1]['url'], 'headers': lines[1]['headers'],
+                    'final_url': lines[1]['url']}
+
+        cls.off_plugin = tv.TVPlugin('pw', static_dir=tv.assets_dir(), library=cls.library)
+        os.environ['IPTV_TV_TOKENS'] = 'tok-alpha, tok-beta'
+        try:
+            cls.plugin = tv.TVPlugin('pw', static_dir=tv.assets_dir(), library=cls.library,
+                                     race_func=fake_race)
+            cls.nolib_plugin = tv.TVPlugin('pw', static_dir=tv.assets_dir())
+        finally:
+            os.environ.pop('IPTV_TV_TOKENS', None)
+        cls.server = web.Server(('127.0.0.1', 0), web.make_handler(root, '', cls.plugin))
+        cls.off_server = web.Server(('127.0.0.1', 0), web.make_handler(root, '', cls.off_plugin))
+        cls.nolib_server = web.Server(('127.0.0.1', 0), web.make_handler(root, '', cls.nolib_plugin))
+        cls.threads = []
+        for server in (cls.server, cls.off_server, cls.nolib_server):
+            thread = threading.Thread(target=server.serve_forever)
+            thread.daemon = True
+            thread.start()
+            cls.threads.append(thread)
+
+    @classmethod
+    def tearDownClass(cls):
+        for server in (cls.server, cls.off_server, cls.nolib_server):
+            server.shutdown()
+            server.server_close()
+        cls.plugin.close()
+        cls.off_plugin.close()
+        cls.nolib_plugin.close()
+        cls.upstream.shutdown()
+        cls.upstream.server_close()
+        cls.temp.cleanup()
+
+    def client(self):
+        return Client(self.server.server_port)
+
+    def channel_path(self, view='main'):
+        return '/tv/race/%s/%s' % (view, quote(self.channel['id'], safe=''))
+
+    def clear_race_cache(self):
+        with self.plugin.race_lock:
+            self.plugin.race_cache.clear()
+
+    def test_endpoints_are_404_without_configured_tokens(self):
+        client = Client(self.off_server.server_port)
+        self.assertEqual(client.request('GET', '/tv/playlist.m3u?token=tok-alpha')[0], 404)
+        self.assertEqual(client.request('GET', self.channel_path() + '?token=tok-alpha')[0], 404)
+        self.assertEqual(client.request('GET', '/tv/rstream/1?token=tok-alpha')[0], 404)
+
+    def test_playlist_rejects_missing_wrong_token_or_missing_library(self):
+        client = self.client()
+        self.assertEqual(client.request('GET', '/tv/playlist.m3u')[0], 401)
+        self.assertEqual(client.request('GET', '/tv/playlist.m3u?token=wrong')[0], 401)
+        nolib = Client(self.nolib_server.server_port)
+        self.assertEqual(nolib.request('GET', '/tv/playlist.m3u?token=tok-alpha')[0], 404)
+
+    def test_playlist_renders_one_race_url_per_channel(self):
+        client = self.client()
+        status, headers, data = client.request('GET', '/tv/playlist.m3u?token=tok-beta')
+        self.assertEqual(status, 200)
+        self.assertTrue(headers['Content-Type'].startswith('application/vnd.apple.mpegurl'))
+        text = data.decode('utf-8')
+        self.assertEqual(text.count('#EXTINF:'), 1)
+        self.assertIn('tvg-id="race.test"', text)
+        self.assertIn('tvg-logo="http://logo.test/race.png"', text)
+        self.assertIn('group-title="Race"', text)
+        self.assertIn('竞速频道', text)
+        expected = 'http://127.0.0.1:%d%s?token=tok-beta' % (
+            self.server.server_port, self.channel_path())
+        self.assertIn(expected, text)
+        status, _, _ = client.request('GET', '/tv/playlist.m3u?token=tok-beta&view=bogus')
+        self.assertEqual(status, 404)
+
+    def test_race_requires_valid_token_and_known_channel(self):
+        client = self.client()
+        self.assertEqual(client.request('GET', self.channel_path())[0], 401)
+        self.assertEqual(client.request('GET', self.channel_path() + '?token=wrong')[0], 401)
+        self.assertEqual(
+            client.request('GET', self.channel_path() + '?token=tok-alpha&x=1')[0], 200)
+        self.assertEqual(
+            client.request('GET', '/tv/race/main/missing-id?token=tok-alpha')[0], 404)
+        self.assertEqual(
+            client.request('GET', self.channel_path('bogus') + '?token=tok-alpha')[0], 404)
+
+    def test_race_relays_winner_and_rewrites_children_with_token(self):
+        self.clear_race_cache()
+        client = self.client()
+        status, headers, data = client.request(
+            'GET', self.channel_path() + '?token=tok-alpha')
+        self.assertEqual(status, 200)
+        self.assertTrue(headers['Content-Type'].startswith('application/vnd.apple.mpegurl'))
+        text = data.decode('utf-8')
+        self.assertIn('BANDWIDTH=1000000', text)
+        children = re.findall(r'/tv/rstream/(\d+)\?token=tok-alpha', text)
+        self.assertEqual(len(children), 2)
+        status, _, data = client.request('GET', '/tv/rstream/%s?token=tok-alpha' % children[0])
+        self.assertEqual(status, 200)
+        media = data.decode('utf-8')
+        self.assertIn('/tv/rstream/', media)
+        self.assertIn('token=tok-alpha', media)
+        self.assertNotIn('/tv/stream/', media)
+        self.assertEqual(client.request('GET', '/tv/rstream/%s' % children[0])[0], 401)
+        self.assertEqual(
+            client.request('GET', '/tv/rstream/%s?token=wrong' % children[0])[0], 401)
+        self.assertEqual(client.request('GET', '/tv/rstream/99999?token=tok-alpha')[0], 404)
+
+    def test_race_falls_back_to_line_zero_when_no_winner(self):
+        self.clear_race_cache()
+        self.race_state['fail'] = True
+        try:
+            client = self.client()
+            status, _, data = client.request(
+                'GET', self.channel_path() + '?token=tok-alpha')
+            self.assertEqual(status, 200)
+            self.assertIn('BANDWIDTH=800000', data.decode('utf-8'))
+        finally:
+            self.race_state['fail'] = False
+
+    def test_race_winner_is_cached_across_requests(self):
+        self.clear_race_cache()
+        client = self.client()
+        before = self.race_state['calls']
+        status, _, first = client.request('GET', self.channel_path() + '?token=tok-alpha')
+        self.assertEqual(status, 200)
+        status, _, second = client.request('GET', self.channel_path() + '?token=tok-alpha')
+        self.assertEqual(status, 200)
+        self.assertEqual(self.race_state['calls'], before + 1)
+        self.assertEqual(first, second)
+
+    def test_token_does_not_unlock_management_or_browser_endpoints(self):
+        client = self.client()
+        self.assertEqual(client.request('GET', '/api/library/state?token=tok-alpha')[0], 401)
+        self.assertEqual(client.request('GET', '/api/tv/session?token=tok-alpha')[0], 401)
+        self.assertEqual(client.request('GET', '/tv/play/0?token=tok-alpha')[0], 401)
+        self.assertEqual(client.request('GET', '/tv/stream/1?token=tok-alpha')[0], 401)
 
 
 if __name__ == '__main__':

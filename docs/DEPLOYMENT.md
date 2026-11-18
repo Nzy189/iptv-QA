@@ -24,6 +24,8 @@ Choose either the existing combined `iptv-qa-web.service` on 8088, or `iptv-qa-d
 
 The password belongs in private `tv.env` (see `config/tv.env.example`), outside Git. Select FFmpeg using `IPTV_TV_FFMPEG` or `--ffmpeg`. `dashboard` never loads playback; `serve` without a password serves reports only; `play` refuses startup without a password. Dashboard routes do not inherit player authentication. See [playback](PLAYBACK.md) for behavior and access boundaries.
 
+To serve TV apps (Apple TV/Android TV players, VLC), set `IPTV_TV_TOKENS` in the same private environment: one or more comma-separated tokens enabling `/tv/playlist.m3u` and the racing relay (see [playback](PLAYBACK.md#token-racing-subscription-for-tv-apps)). Tokens require the channel library, apply only to those endpoints, and are revoked by editing the environment and restarting the web service; leave the variable empty to disable the endpoints. Treat a token like the player password, and prefer an HTTPS reverse proxy before sharing subscription URLs beyond trusted networks.
+
 These are source and service-template changes, not an automatic restart of an existing deployment. Validate upgrades in an isolated directory before selecting the service mode, ports and environment.
 
 ### Optional multi-ECS dashboard

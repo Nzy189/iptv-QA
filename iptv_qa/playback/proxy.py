@@ -35,7 +35,9 @@ def fetch_upstream(url, headers, max_bytes, range_header=None):
             raise ValueError('upstream object too large')
         return handle.getcode(), handle.headers, data, handle.geturl()
 
-def rewrite_playlist(text, base_url, headers, register):
+def rewrite_playlist(text, base_url, headers, register, url_template=None):
+    if url_template is None:
+        url_template = '/tv/stream/%d'
     lines = []
     for raw in text.splitlines():
         line = raw.strip()
@@ -43,8 +45,8 @@ def rewrite_playlist(text, base_url, headers, register):
             lines.append(raw)
         elif line.startswith('#'):
             def sub(match):
-                return 'URI="/tv/stream/%d"' % register(urljoin(base_url, match.group(1)), headers)
+                return 'URI="%s"' % (url_template % register(urljoin(base_url, match.group(1)), headers))
             lines.append(URI_ATTR.sub(sub, raw))
         else:
-            lines.append('/tv/stream/%d' % register(urljoin(base_url, line), headers))
+            lines.append(url_template % register(urljoin(base_url, line), headers))
     return '\n'.join(lines) + '\n'

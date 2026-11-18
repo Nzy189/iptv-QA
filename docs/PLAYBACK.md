@@ -30,6 +30,12 @@ Open `http://127.0.0.1:8089/tv/`, log in and paste an M3U URL. `/` redirects to 
 
 Some channel URLs redirect to a CDN directory whose playlist uses relative file names. The proxy resolves child playlists, segments, keys and initialization files against the final response URL after redirects. Resolving them against the original channel URL can fetch the playlist successfully but request video from the wrong directory (HTTP 404), leaving browser playback unable to start even when FFmpeg can decode the source.
 
+## Token racing subscription for TV apps
+
+With the library enabled and one or more tokens configured (`IPTV_TV_TOKENS`, comma-separated, in the private service environment), any M3U player — an Apple TV or Android TV app, VLC, TiviMate — can load `http://HOST:PORT/tv/playlist.m3u?token=TOKEN&view=main|supplement|english` (view defaults to main). The playlist shows one entry per channel. Each entry's URL is a racing endpoint: the server concurrently probes the channel's ranked lines, relays the first line whose HLS manifest is valid and whose first segment returns data, and injects each line's User-Agent/Referer itself, so the player app never needs to understand `#EXTVLCOPT`. Rewritten child URLs use a parallel token-authenticated `/tv/rstream/` route, because the browser `/tv/stream/` route requires the session cookie.
+
+Winners are cached per (view, channel) for about 60 seconds, so returning to a channel does not re-race; a race where every line fails falls back to ranked line 0. Tokens never unlock the management API or browser endpoints; they are checked in constant time, and leaving `IPTV_TV_TOKENS` empty disables the endpoints entirely (404). A token is as sensitive as the player password: keep it out of Git and logs, and prefer an HTTPS reverse proxy before sharing the subscription URL widely, since the token travels in the query string over the same plain HTTP as the existing password cookie.
+
 ## Access and scope
 
 The player uses a shared password and an HttpOnly, SameSite=Strict session cookie. Incorrect passwords incur a one-second delay. Sessions and loaded channel registries live in memory and disappear after restart. This is a personal/small trusted-group player, not a multi-tenant account system. Dashboard routes are not protected by the player password.
@@ -40,4 +46,4 @@ Proxying and fallback transcoding consume server bandwidth/CPU per viewer. Brows
 
 ## Managed Top5 and recoverable cleanup
 
-With the [channel library](LIBRARY.md) enabled, presets read database views and expose up to five lines per channel; `/tv/manage/` edits those same records. Destruction mode quarantines within the current view, queues versioned publication and allows restoration. The homepage separates current library counts from historical QA outcomes and hides compatibility downloads under a secondary disclosure.
+With the [channel library](LIBRARY.md) enabled, presets read database views and expose up to five lines per channel; `/tv/manage/` edits those same records. Failure cleanup (失效清理) quarantines within the current view, queues versioned publication and allows restoration. The homepage separates current library counts from historical QA outcomes and hides compatibility downloads under a secondary disclosure.

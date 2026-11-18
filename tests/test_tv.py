@@ -847,5 +847,19 @@ class PrefetchIntegrationTests(unittest.TestCase):
         plugin.close()
 
 
+class PrefetchConfigTests(unittest.TestCase):
+    def test_create_player_passes_prefetch_mode(self):
+        from iptv_qa.server.http import create_player
+        plugin = create_player('pw', prefetch_mode='off')
+        self.assertEqual(plugin.prefetcher.mode, 'off')
+        plugin.close()
+
+    def test_invalid_mode_falls_back_to_light(self):
+        from iptv_qa.server.http import create_player
+        plugin = create_player('pw', prefetch_mode='bogus')
+        self.assertEqual(plugin.prefetcher.mode, 'light')
+        plugin.close()
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

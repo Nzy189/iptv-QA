@@ -12,6 +12,169 @@
 
 毁灭模式默认关闭，仅对受管分组有效。每台五条候选共享20秒起播预算，线路全部失败或预算耗尽时移入当前分组清理区，并排队发布；实际播放成功、自动播放被浏览器拒绝、手动切台或换分组时取消起播清理计时。登录失效或整体断网不触发清理。可在管理页恢复，不修改原始采集来源，自定义订阅不能触发总表清理。
 
+## 数据模型
+
+总表是一个 SQLite 数据库。频道身份、人工操作和机器观测分别放在不同的表和列里，导入、检测和人工修改互不覆盖。
+
+```mermaid
+erDiagram
+    channels ||--o{ aliases : "matched by"
+    channels ||--o{ memberships : "viewed in"
+    channels ||--o{ routes : "ranked lines"
+    channels ||--o{ observations : "observed"
+    streams ||--o{ routes : "provides"
+    streams ||--o{ origins : "sourced from"
+    streams ||--o{ observations : "observed"
+    jobs |o--o| versions : "produces"
+    versions ||--|| version_states : "restores"
+
+    channels {
+        TEXT id PK "persistent UUID"
+        TEXT name
+        TEXT group_name
+        TEXT state
+        INTEGER revision
+        TEXT metadata
+    }
+    aliases {
+        TEXT scope PK
+        TEXT alias PK "epg or name key"
+        TEXT channel_id FK
+    }
+    memberships {
+        TEXT channel_id PK
+        TEXT scope PK "main, supplement, english"
+        INTEGER position
+        INTEGER enabled "operator switch"
+        INTEGER available "seen in latest import"
+    }
+    routes {
+        TEXT channel_id PK
+        TEXT scope PK
+        TEXT stream_id PK
+        INTEGER rank "QA ranking"
+        INTEGER priority "operator ranking"
+        INTEGER enabled "operator switch"
+        INTEGER eligible "current QA evidence"
+        TEXT evidence
+    }
+    streams {
+        TEXT id PK "URL and headers identity"
+        TEXT url
+        TEXT headers
+    }
+    origins {
+        TEXT stream_id PK
+        TEXT source PK
+        TEXT first_seen
+        TEXT last_seen
+    }
+    observations {
+        INTEGER id PK
+        TEXT channel_id
+        TEXT stream_id
+        TEXT kind "detector or browser"
+        INTEGER ok
+        TEXT reason
+        TEXT policy
+    }
+    audit {
+        INTEGER id PK
+        TEXT action
+        TEXT target
+        TEXT scope
+        TEXT before_state
+        TEXT after_state
+    }
+    jobs {
+        TEXT id PK
+        TEXT kind "publish or backup"
+        INTEGER revision
+        TEXT state
+    }
+    versions {
+        TEXT id PK
+        INTEGER revision
+        TEXT state
+        TEXT manifest
+    }
+    version_states {
+        TEXT version_id PK
+        TEXT payload "operator state for rollback"
+    }
+    backups {
+        TEXT id PK
+        TEXT state
+        TEXT object_key
+        TEXT sha256
+    }
+```
+
+- `channels` — 每台频道一行，持久 UUID。改名、换分组、重新导入都不会改变 UUID。
+- `aliases` — 按视图隔离的匹配键（有 `tvg-id` 时用 `epg:tvg-id:...`，否则用名称）。别名只辅助导入匹配；改名不会破坏身份，名称冲突也不会被盲目合并。
+- `memberships` — 频道属于哪些视图（综合、补充、英语），人工开关（`enabled`）与最近一次导入是否见到（`available`）分开。
+- `routes` — 每台频道、每个视图、每条线路一行：检测排序（`rank`）、人工优先级（`priority`）、人工开关（`enabled`）、当前检测资格（`eligible`）和证据。人工状态与自动状态是不同的列，导入和检测不会重置人工决定。
+- `streams` / `origins` — 线路的 URL 和请求头只存一份，跨频道、跨视图共享；origins 记录每个线路最早和最近由哪个来源提供。
+- `observations` — 只追加的检测器和浏览器证据。观测不直接改频道状态，资格是从观测中另行推导的。
+- `audit` — 只追加的人工操作记录，含操作前后的状态。
+- `jobs` / `versions` / `version_states` — 发布和备份任务带着排队时的数据库修订号；每次发布是一个不可变版本，外加一份可回退的人工状态快照。
+- `backups` — 每份加密快照一行，含状态和校验和；上传失败永远不会显示成已验证的备份。
+
+## 数据流
+
+```mermaid
+flowchart LR
+  SRC[Upstream playlists] --> QA[QA checker]
+  QA --> EXP[Published exports Top5, Top3, Set4, English]
+  EXP --> MIG["migrate and ingest via alias matching"]
+  MIG --> DB[(SQLite library)]
+  OPS[Management page] -->|"revision-checked writes, 409 on stale"| DB
+  QA -->|"detector outcomes"| DB
+  DB --> W["worker: serialized publish job"]
+  W --> VER[Immutable version directory]
+  W --> LOC[Local exports Top5, Set1-3]
+  W --> OBS[OBS versioned objects, then fixed keys, manifest last]
+  LOC --> PL[Player Top5 view, up to five ranked lines]
+  PL -->|"browser failures"| DB
+  DB --> BK[Encrypted private backup]
+```
+
+导入只刷新机器状态；人工操作是人工状态的唯一写入者；后台是唯一的发布者。排队发布之后数据库修订号又前移时，旧发布请求作废。
+
+## 设计取舍
+
+1. **SQLite 作为唯一数据来源。** 一个文件即可备份，不需要额外服务，写入压力（一个管理页、一个后台）单写入者足够。放弃的方案：客户端-服务器数据库，会多出一个需要运维的服务，却解决不了当前部署实际遇到的问题。代价：不支持多机并发写入；连接保持短事务，用 `BEGIN IMMEDIATE` 加忙等待超时，不用长锁。
+2. **持久 UUID 加别名匹配。** 名称会变，身份不能变。别名按视图隔离、只做辅助，改名或换分组不会产生重复频道。取舍：模糊匹配（同名但请求身份不同）留给人工复核，不做自动合并。
+3. **人工状态与机器状态分列。** `enabled`、`priority` 不会被导入或检测重置；`eligible`、`available`、`rank` 由自动化刷新。这保证自动运行不会悄悄撤销人工删除。代价：需要理解的状态更多，管理页把这些状态明确展示出来。
+4. **按视图的成员关系和清理区。** 同一台频道可以在一个视图启用、在另一个视图被隔离；清理按视图可逆，不改原始来源。取舍：行数比一个全局开关多，换来的是单视图清理不会波及其他视图。
+5. **基于修订号的乐观并发。** 每次写入都递增全局修订号；管理请求带着它读到的修订号，过期页面收到 HTTP 409 而不是覆盖新编辑。选它而不是加锁，是因为管理页面停留时间长。代价：冲突后需要重新加载。
+6. **不可变发布版本、串行发布器。** 每次发布写一个新版本；回退是从版本恢复人工状态再生成新发布，而不是改写历史。OBS 多对象更新不是原子的，所以先传版本化对象、再传固定键、最后传脱敏清单；部分失败重试同一版本。取舍：固定键短暂落后一个版本，用这个窗口换取不引入分布式事务的复杂度。
+7. **观测与资格分离。** 检测器和浏览器证据只追加，资格另行推导，"检测器看到一次失败"和"频道被移除"始终是两件事。失败或样本运行不能替换总表。
+8. **备份先验证再算数。** 每份快照上传前先在本地实际恢复，对象设为私有 ACL，实测匿名访问被拒，再回下载核对字节。取舍：备份更慢；没有证据就永远不会有"已验证"的备份。
+
+## 数据模型与设计思路
+
+单一 SQLite 目录库是唯一事实来源。结构把频道身份、线路资源和两者之间的连接分开，重复 URL 和按语言各建一套表都不会发生。
+
+| 表 | 职责 |
+| --- | --- |
+| `channels` | 频道身份：持久 id、名称、分组、状态、修订号和元数据。 |
+| `aliases` | 把（范围, 别名）映射到频道，不同来源清单里的同一频道归并为一。 |
+| `streams` | 每个唯一的 URL+请求头一行，全局去重；一条线路可服务多个频道。 |
+| `origins` | 线路来自哪个来源清单，含首末发现时间。 |
+| `routes` | 接线板：（频道, 范围, 线路）加排名、优先级、启停、资格、证据和最近存活时间。 |
+| `memberships` | 频道属于哪个范围及其位置。 |
+| `observations` | 每次检测的记录（类型、结果、原因、策略）；检测器记录只保留最近 10 万条。 |
+| `audit` | 每次改动的前后状态。 |
+| `jobs` | 挂起的后台任务（发布、备份），关联修订号。 |
+| `versions` / `version_states` | 发布快照：清单摘要加回退所用的完整状态。 |
+| `backups` | 加密备份登记：对象键、校验和与状态。 |
+| `meta` | 全局修订号和结构版本。 |
+
+设计上让三种关注点各归其位：频道是不依赖信号来源的身份，线路是只存一份的资源，`routes` 承载排名和检测证据——换线或停用线路不会丢失历史。范围是 memberships、routes、aliases 上的标签（`main`、`supplement`、`english`），不是按语言各建一套表，将来加第四个范围不需要改结构。清理是状态变更而不是删除：被隔离的频道保留线路和证据，因此可恢复、可审计。每次发布把整个目录冻结成带编号的版本，回退恢复已知版本且不抹掉操作记录。
+
+目前明确接受两个取舍：未启用 WAL 模式——连接短存活、写入并发低，默认日志模式的读写互锁代价很小，启用 WAL 留作后续改进；外键只在 `aliases` 上——频道从不硬删除，当前不会出现孤儿行，若将来引入硬删除路径，需显式清理 routes、memberships 和 observations。
+
 ## 迁移和发布
 
 ```bash

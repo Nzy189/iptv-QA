@@ -49,7 +49,7 @@ python3 iptv_checker.py --config config.local.json --check-config
 python3 -m iptv_qa run --config config.local.json
 ```
 
-`configure.py --source URL` 可替换直接订阅，多次填写可加入多个订阅；完整流程仍附带目录源。静态 FFmpeg 请修改配置中的路径。`catalog.archive_url`、`catalog.metadata_url`、`catalog.playlist_urls` 控制发现输入；需要测试 Free-TV 时再明确加入其地址。
+`configure.py --source URL` 可替换直接订阅，多次填写可加入多个订阅；`--source` 也接受已存在的本地播放列表文件，写入配置时转为 `file://` 地址；既非 URL 也非存在文件的值会被拒绝。导入路径见[快速开始](../README.zh-CN.md#检测自己的播放列表)。完整流程仍附带目录源。静态 FFmpeg 请修改配置中的路径。`catalog.archive_url`、`catalog.metadata_url`、`catalog.playlist_urls` 控制发现输入；需要测试 Free-TV 时再明确加入其地址。
 
 ## 可选 OBS 上传
 

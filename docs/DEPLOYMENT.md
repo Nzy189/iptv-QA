@@ -49,7 +49,7 @@ python3 iptv_checker.py --config config.local.json --check-config
 python3 -m iptv_qa run --config config.local.json
 ```
 
-`configure.py --source URL` can replace the default direct subscription; repeat it for multiple subscriptions. The catalogue source is still appended for the full pipeline. Edit `ffmpeg` and `ffprobe` paths if using static binaries. `catalog.archive_url`, `catalog.metadata_url` and `catalog.playlist_urls` control discovery. Add the Free-TV candidate to `catalog.playlist_urls` only when intentionally evaluating it.
+`configure.py --source URL` can replace the default direct subscription; repeat it for multiple subscriptions. `--source` also accepts an existing local playlist file, stored as a `file://` URL; a value that is neither a URL nor an existing file is rejected. See [check your own playlist](../README.md#check-your-own-playlist) for the import path. The catalogue source is still appended for the full pipeline. Edit `ffmpeg` and `ffprobe` paths if using static binaries. `catalog.archive_url`, `catalog.metadata_url` and `catalog.playlist_urls` control discovery. Add the Free-TV candidate to `catalog.playlist_urls` only when intentionally evaluating it.
 
 ## Optional OBS publishing
 

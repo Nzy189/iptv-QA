@@ -187,7 +187,7 @@ class LibraryHTTPTests(unittest.TestCase):
         from test_tv import Client
         self.temp=tempfile.TemporaryDirectory()
         self.store=Library(Path(self.temp.name)/'library/catalog.sqlite3')
-        self.store.ingest('main',playlist(7),'fixture')
+        self.store.ingest('main',playlist(5),'fixture')
         self.plugin=TVPlugin('library-test-password',public_base='http://owned.example',library=self.store)
         self.server=Server(('127.0.0.1',0),make_handler(self.temp.name,'',self.plugin))
         self.thread=threading.Thread(target=self.server.serve_forever,daemon=True);self.thread.start()
@@ -247,5 +247,46 @@ class LibraryHTTPTests(unittest.TestCase):
         self.assertEqual(self.client.request('POST','/api/library/action',restore)[0],200)
         self.assertEqual(self.client.request('POST','/api/library/action',restore)[0],409)
         self.assertEqual(len(self.store.view('main')),1)
+
+    def test_report_line_disables_line_and_quarantines_emptied_channel(self):
+        self.login();_,_,body=self.client.request('POST','/api/tv/source',{'url':'http://owned.example/iptv_ok.m3u'})
+        payload=json.loads(body);cid=payload['channels'][0]['id']
+        sid=self.store.view('main')[0]['lines'][2]['stream_id']
+        request={'operation':'report_line','channel_id':cid,'source_id':payload['source_id'],
+                 'slot':2,'reason':'content_mismatch'}
+        status,_,body=self.client.request('POST','/api/library/action',request)
+        self.assertEqual(status,200);data=json.loads(body)
+        self.assertFalse(data['channel_quarantined'])
+        self.assertEqual(len(self.store.view('main')[0]['lines']),4)
+        enable={'operation':'enable_line','scope':'main','channel_id':cid,
+                'revision':self.store.revision(),'stream_id':sid}
+        status,_,body=self.client.request('POST','/api/library/action',enable)
+        self.assertEqual(status,200)
+        self.assertEqual(len(self.store.view('main')[0]['lines']),5)
+        token=self.client.cookie.split('=',1)[1].split(';')[0]
+        session=self.plugin.sessions.get(token+':'+payload['source_id'])
+        session['library_revision']=json.loads(body)['revision']
+        for slot in (0,1,2,3,4):
+            request['slot']=slot
+            status,_,body=self.client.request('POST','/api/library/action',request)
+        self.assertEqual(status,200);self.assertTrue(json.loads(body)['channel_quarantined'])
+        self.assertEqual(self.store.view('main'),[])
+        restore={'operation':'restore','scope':'main','channel_id':cid,'revision':self.store.revision()}
+        self.assertEqual(self.client.request('POST','/api/library/action',restore)[0],200)
+
+    def test_report_line_rejects_bad_requests(self):
+        from test_tv import Client
+        self.login();_,_,body=self.client.request('POST','/api/tv/source',{'url':'http://owned.example/iptv_ok.m3u'})
+        payload=json.loads(body);cid=payload['channels'][0]['id']
+        base={'operation':'report_line','channel_id':cid,'source_id':payload['source_id'],
+              'slot':0,'reason':'content_mismatch'}
+        anonymous=Client(self.server.server_port)
+        self.assertEqual(anonymous.request('POST','/api/library/action',base)[0],401)
+        self.assertEqual(self.client.request('POST','/api/library/action',base)[0],200)
+        for override in ({'slot':9},{'slot':'2'},{'slot':True},{'reason':'startup_timeout'},
+                         {'channel_id':'nope'},{'source_id':'old'}):
+            self.assertEqual(self.client.request('POST','/api/library/action',
+                dict(base,**override))[0],400 if 'source_id' not in override else 409,
+                'rejected: %s'%override)
 
 if __name__=='__main__':unittest.main()

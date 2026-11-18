@@ -124,14 +124,21 @@ function player(count = 40, sets = 3) {
 }
 {
   const p = player(3, 5); p.state.mode = 'enhanced'; p.state.channels[0].line_count = 5; p.play(0);
-  p.fail(); p.fail(); p.fail();
-  assert.equal(p.state.slot, 3, 'an exhausted race continues at the first unraced line');
-  assert.equal(p.instances[3].url, '/tv/play/0/3');
+  assert.equal(p.instances.length, 5, 'a five-line channel races all five lines at once');
+  p.fail(); p.fail(); p.fail(); p.fail(); p.fail();
+  assert.equal(p.state.current, 1, 'an exhausted five-line race advances to the next channel');
+}
+{
+  const p = player(3, 7); p.state.channels[0].line_count = 7; p.play(0);
+  assert.equal(p.instances.length, 5, 'racing is capped at five concurrent lines');
+  p.fail(); p.fail(); p.fail(); p.fail(); p.fail();
+  assert.equal(p.state.slot, 5, 'an exhausted race continues at the first unraced line');
+  assert.equal(p.instances[5].url, '/tv/play/0/5');
 }
 {
   const p = player(3, 3); p.state.channels[0].line_count = 3; p.play(0);
   assert.deepEqual(p.instances.map(h => h.url), ['/tv/play/0/0', '/tv/play/0/1', '/tv/play/0/2'],
-    'hedged racing loads the top three lines at once');
+    'hedged racing loads every line at once');
   const winner = p.created[0];
   winner.listeners.loadeddata[0]();
   assert.equal(p.state.slot, 1, 'the first line to decode a frame wins the race');

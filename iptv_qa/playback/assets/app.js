@@ -290,7 +290,7 @@
 
   function startRace(index, generation) {
     var channel = state.channels[index];
-    var lines = Math.min(3, channel.line_count || 1);
+    var lines = Math.min(5, channel.line_count || 1);
     if (state.slot !== 0 || !state.raceOn || lines < 2) return;
     var race = { generation: generation, candidates: [], mediaError: false, ended: false };
     state.race = race;

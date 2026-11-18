@@ -921,6 +921,50 @@ class PrefetchIntegrationTests(unittest.TestCase):
         plugin.close()
 
 
+class ServeCacheTests(unittest.TestCase):
+    class _Handler:
+        def __init__(self, range_header=None):
+            self.command = 'GET'
+            self.headers = {} if range_header is None else {'Range': range_header}
+            self.wfile = io.BytesIO()
+
+        def send_response(self, code):
+            self.status = code
+
+        def send_header(self, key, value):
+            pass
+
+        def end_headers(self):
+            pass
+
+    def test_serves_cached_segment_without_upstream(self):
+        plugin = TVPlugin(b'pw')
+        plugin.prefetcher.max_bytes = 100000
+        plugin.prefetcher._store_bytes('http://u/seg.ts', 200, 'video/mp2t', b'\x47' * 188, 'http://u/seg.ts')
+        handler = self._Handler()
+        with mock.patch('iptv_qa.playback.service.fetch_upstream',
+                        side_effect=AssertionError('no upstream on cache hit')):
+            self.assertTrue(plugin.serve_url(handler, 'http://u/seg.ts', {}))
+        self.assertEqual(handler.wfile.getvalue(), b'\x47' * 188)
+        plugin.close()
+
+    def test_range_request_bypasses_cache(self):
+        plugin = TVPlugin(b'pw')
+        plugin.prefetcher.max_bytes = 100000
+        plugin.prefetcher._store_bytes('http://u/seg.ts', 200, 'video/mp2t', b'\x47' * 188, 'http://u/seg.ts')
+        handler = self._Handler(range_header='bytes=0-10')
+        calls = []
+
+        def fake_fetch(url, headers, cap, range_header=None):
+            calls.append(url)
+            return 206, {}, b'\x47' * 11, url
+
+        with mock.patch('iptv_qa.playback.service.fetch_upstream', side_effect=fake_fetch):
+            plugin.serve_url(handler, 'http://u/seg.ts', {})
+        self.assertEqual(calls, ['http://u/seg.ts'])
+        plugin.close()
+
+
 class PrefetchConfigTests(unittest.TestCase):
     def test_create_player_passes_prefetch_mode(self):
         from iptv_qa.server.http import create_player

@@ -629,8 +629,26 @@ class TVPlugin:
         self.send_media(handler, 200, path.read_bytes(), 'video/mp2t')
         return True
 
+    def _send_cached(self, handler, entry, url_template, headers):
+        data = entry['data']
+        if data[:3] == BOM:
+            data = data[3:]
+        if data.lstrip(b'\r\n \t')[:7] == b'#EXTM3U':
+            text = rewrite_playlist(data.decode('utf-8', 'replace'), entry['final_url'], headers,
+                                    self.registry.register, url_template)
+            self.send_media(handler, 200, text.encode('utf-8'),
+                            'application/vnd.apple.mpegurl; charset=utf-8')
+            return
+        content_type = entry.get('content_type') or 'application/octet-stream'
+        self.send_media(handler, entry['status'] if entry['status'] in (200, 206) else 200, data, content_type)
+
     def serve_url(self, handler, url, headers, url_template=None):
         range_header = handler.headers.get('Range')
+        if not range_header:
+            cached = self.prefetcher.get_bytes(url)
+            if cached is not None:
+                self._send_cached(handler, cached, url_template, headers)
+                return True
         try:
             status, response_headers, data, final_url = fetch_upstream(url, headers, MAX_SEGMENT_BYTES, range_header)
         except (URLError, OSError, ValueError, ssl.SSLError) as error:

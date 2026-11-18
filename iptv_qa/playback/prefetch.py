@@ -63,6 +63,10 @@ class Prefetcher:
         return winner
 
     def warm(self, view, channel_id, lines, mode=None, wait=False):
+        # A server configured 'off' is a true master switch: never warm,
+        # regardless of a per-request mode (e.g. the browser asking 'light').
+        if self.mode == 'off':
+            return None
         chosen = mode if mode in self.VALID_MODES else self.mode
         if chosen == 'off' or self.get(view, channel_id) is not None:
             return None

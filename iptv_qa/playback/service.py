@@ -140,6 +140,11 @@ class TVPlugin:
             return self.serve_session_status(handler)
         if path == '/api/tv/playlists':
             return self.serve_playlists(handler)
+        if path == '/api/tv/prefetch':
+            if not self.authorized(handler):
+                self.send_json(handler, {'error': 'unauthorized'}, 401)
+                return True
+            return self.handle_prefetch_hint(handler)
         match = PLAY_PATH.match(path)
         if match:
             return self.serve_channel(handler, int(match.group(1)), int(match.group(2) or 0))
@@ -277,6 +282,9 @@ class TVPlugin:
         return True
 
     def handle_prefetch(self, handler):
+        if not self.prefetcher.enabled():
+            self.send_json(handler, {'ok': True, 'warmed': False})
+            return True
         body = self.read_json(handler) or {}
         mode = str(body.get('mode') or 'off')
         if mode not in Prefetcher.VALID_MODES:
@@ -301,6 +309,23 @@ class TVPlugin:
             return True
         self.prefetcher.warm(session['library_scope'], nxt['id'], lines, mode=mode)
         self.send_json(handler, {'ok': True, 'warmed': True})
+        return True
+
+    def handle_prefetch_hint(self, handler):
+        """Return the prewarmed winner's line slot for a browser channel index."""
+        try:
+            index = int(parse_qs(urlsplit(handler.path).query).get('index', ['-1'])[0])
+        except (TypeError, ValueError):
+            index = -1
+        slot = -1
+        session = self.playback_session(handler)
+        if session and session.get('library_scope') and self.prefetcher.enabled():
+            channels = session.get('channels') or []
+            if 0 <= index < len(channels):
+                hit = self.prefetcher.get(session['library_scope'], channels[index]['id'])
+                if hit:
+                    slot = int(hit['index'])
+        self.send_json(handler, {'ok': True, 'slot': slot})
         return True
 
     def handle_source(self, handler):
@@ -445,11 +470,12 @@ class TVPlugin:
                     self.race_cache.popitem(last=False)
         return winner
 
-    def _prefetch_next(self, view, channel_id):
+    def _prefetch_next(self, view, channel_id, rows=None):
         """Warm the channel after channel_id in the given view, if enabled."""
         if not self.prefetcher.enabled() or self.library is None:
             return
-        rows = self.library.view(view)
+        if rows is None:
+            rows = self.library.view(view)
         ids = [row['id'] for row in rows]
         if channel_id not in ids or len(rows) < 2:
             return
@@ -469,8 +495,8 @@ class TVPlugin:
         if self.library is None or view not in TV_RACE_VIEWS:
             self.send_json(handler, {'error': 'not_found'}, 404)
             return True
-        channel = next((row for row in self.library.view(view)
-                        if row['id'] == channel_id), None)
+        rows = self.library.view(view)
+        channel = next((row for row in rows if row['id'] == channel_id), None)
         if channel is None:
             self.send_json(handler, {'error': 'channel_not_found'}, 404)
             return True
@@ -482,7 +508,7 @@ class TVPlugin:
                 self.send_json(handler, {'error': 'channel_or_line_inactive'}, 404)
                 return True
             winner = lines[0]
-        self._prefetch_next(view, channel_id)
+        self._prefetch_next(view, channel_id, rows)
         # the template is %-formatted later, so a literal % in the token must be doubled
         template = '/tv/rstream/%d?token=' + quote(token, safe='').replace('%', '%%')
         return self.serve_url(handler, winner['url'], winner['headers'], template)

@@ -110,7 +110,7 @@ function player(count = 40, sets = 3) {
   assert.equal(p.state.current,1,'all five lines must fail before advancing');
 }
 {
-  const p=player(3,5);p.state.libraryScope='main';p.state.sourceId='snapshot';p.state.channels[0].id='fixed-channel';
+  const p=player(3,5);p.state.libraryScope='main';p.state.sourceId='snapshot';p.state.prefetchMode='off';p.state.channels[0].id='fixed-channel';
   p.play(0);p.elements['destruction-btn'].click();
   assert.equal(p.state.destructive,true);assert.ok(p.state.destructionTimer);
   p.fail();assert.equal(p.state.slot,1);
@@ -237,7 +237,7 @@ function player(count = 40, sets = 3) {
   function settle() { return new Promise(resolve => setImmediate(resolve)); }
   function reportPlayer() {
     const p = player(3, 5);
-    p.state.libraryScope = 'main'; p.state.sourceId = 'snap';
+    p.state.libraryScope = 'main'; p.state.sourceId = 'snap'; p.state.prefetchMode = 'off';
     p.state.channels[0].id = 'ch0'; p.state.channels[0].line_count = 5;
     p.calls = []; p.reply = { revision: 7, channel_quarantined: false };
     p.sandbox.fetch = (path, options) => {
@@ -288,6 +288,27 @@ function player(count = 40, sets = 3) {
     p.elements['report-btn'].click();
     await settle();
     assert.equal(p.calls.length, 0, 'report does nothing outside managed sources');
+  }
+  {
+    const p = player(); p.state.libraryScope = 'main';
+    p.state.prefetchMode = 'light'; p.state.order = 'sequential';
+    p.sandbox.fetch = (url) => {
+      if (url.indexOf('/api/tv/prefetch') === 0) {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ ok: true, slot: 2 }) });
+      }
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({}) });
+    };
+    p.play(0);
+    await settle(); await settle();
+    assert.equal(p.state.slot, 2, 'browser starts on the server-prewarmed winner slot');
+    assert.deepEqual(p.instances.map(h => h.url), ['/tv/play/0/2'],
+      'the prewarmed winner slot is loaded from the hint');
+  }
+  {
+    const p = player(); p.play(0);
+    assert.equal(p.instances[0].url, '/tv/play/0/0',
+      'non-library playback still starts on slot 0 synchronously');
+    assert.equal(p.state.slot, 0);
   }
 })().then(() => console.log('PLAYER_NAVIGATION_OK: backups, sequential scan, random non-repeat, stale events, watchdog, normal mode, hedged racing, autoplay notices, report cleanup'))
   .catch(error => { console.error(error); process.exit(1); });

@@ -481,7 +481,24 @@
     video.pause();
     video.removeAttribute('src');
     video.load();
-    startPlayback(false);
+    if (state.prefetchMode !== 'off' && state.libraryScope && state.order === 'sequential') {
+      var hintGeneration = state.generation;
+      var hintUrl = '/api/tv/prefetch?index=' + i;
+      if (state.sourceId) hintUrl += '&source_id=' + encodeURIComponent(state.sourceId);
+      fetch(hintUrl).then(function (response) {
+        if (response.status === 401) { showLogin(); return null; }
+        return response.ok ? response.json() : null;
+      }).then(function (data) {
+        if (state.generation === hintGeneration && state.current === i) {
+          state.slot = (data && data.slot > 0) ? data.slot : 0;
+          startPlayback(false);
+        }
+      }).catch(function () {
+        if (state.generation === hintGeneration) startPlayback(false);
+      });
+    } else {
+      startPlayback(false);
+    }
   }
 
   function next() { var i=nextVisible(state.current);if(i>=0)play(i); }

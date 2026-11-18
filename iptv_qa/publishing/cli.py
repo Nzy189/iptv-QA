@@ -14,6 +14,12 @@ def main(argv=None):
     parser.add_argument('--scope', choices=('main', 'english'), default='main')
     args = parser.parse_args(argv)
     cfg = json.loads(Path(args.config).read_text(encoding='utf-8'))
+    from iptv_qa.library.store import configured_path
+    if configured_path(cfg) is not None and args.scope == 'main':
+        from iptv_qa.library.publishing import Publisher
+        result = Publisher(cfg).publish()
+        print('Library publication ' + result['state'])
+        return 2 if result['state']=='sync_failed' else 0
     data = Path(cfg['data_dir'])
     obs = dict(cfg.get('obs', {}))
     if args.scope == 'english':

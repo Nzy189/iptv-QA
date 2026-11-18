@@ -18,8 +18,10 @@ Open `http://127.0.0.1:8089/tv/`, log in and paste an M3U URL. `/` redirects to 
 
 ## Switching and media delivery
 
-- Presets cover Set1/Set2/Set3/Top3. For recognized set filenames, failures fall back across the three aligned sets by channel index; keep their names and order aligned.
-- Normal mode shows an error after backups fail. Enhanced mode also tries the next set after 10 seconds without data; if all sets fail it randomly tries another channel, up to 15 times. This is a playback recovery policy, not a new quality score.
+- Three presets are shown: **综合频道**, **今日补充** and **英语频道**. With the library enabled, each reads its managed view with up to five ranked lines. Without it, the combined preset falls back to Set1–3 and matches backups by normalized channel identity, so missing/reordered rows do not play another channel. Existing playlist URLs and custom Top3 input still work.
+- Set4 keeps its own order and no Set1–3 fallback. Supply `iptv_set4.m3u` under the public base URL, or put it in `DATA_DIR/extras/`; scheduled QA does not overwrite it. English uses `iptv_english.m3u` or `DATA_DIR/english/published/iptv_top3.m3u`.
+- Normal mode reports failure after all channel lines fail. Enhanced mode also tries a backup after 10 seconds without data, then switches channel after every line fails. **顺序换台** (default) selects the next channel; toggle to **随机换台** for random selection without repeats. A scan stops after trying the whole list once; manual selection/retry starts a fresh scan. This mode never deletes channels or modifies OBS. Old channel error callbacks cannot switch a newly selected channel.
+- **多源竞速** (hedged requests, on by default): when a channel has several lines, the first three start loading at once and the first one to decode a frame plays; the others are dropped immediately. Lines that all fail with codec errors fall back to server transcoding, and other total failures continue sequentially at the first unraced line. The toggle in the controls bar turns racing off for sequential line-by-line attempts; racing briefly multiplies switch-time bandwidth by the number of racing lines.
 - The same-origin proxy rewrites HLS manifests, segments, keys, audio tracks and initialization URLs, preserving channel User-Agent/Referer settings. hls.js and its license are bundled. Browser codec support still matters.
 - On a decode failure or sound without picture, the frontend can request FFmpeg fallback: H.264/AAC, up to 720p and 2 Mbps. Audio-only sources show a notice; transcoding cannot manufacture missing video.
 - Default limits are two simultaneous transcodes and 90 seconds idle time. Tune `--transcode-limit`, `--transcode-idle` and `--ffmpeg`; `IPTV_TV_FFMPEG` is also supported. Direct proxy playback does not require FFmpeg. Service shutdown stops owned transcodes and removes their temporary files.
@@ -35,3 +37,7 @@ The player uses a shared password and an HttpOnly, SameSite=Strict session cooki
 The proxy restricts requests to URLs registered from loaded playlists and rejects selected cloud metadata addresses. An authenticated custom playlist can introduce upstream addresses: this is not comprehensive SSRF isolation. Restrict access to trusted users and network paths. Use HTTPS and appropriate access control when exposing the service beyond localhost.
 
 Proxying and fallback transcoding consume server bandwidth/CPU per viewer. Browser autoplay and codec support vary by device. Public ECS cannot fetch private-network multicast without an appropriate upstream gateway. The old [feasibility note](WEB_PLAYER_FEASIBILITY.md) is historical; this page describes implemented behavior.
+
+## Managed Top5 and recoverable cleanup
+
+With the [channel library](LIBRARY.md) enabled, presets read database views and expose up to five lines per channel; `/tv/manage/` edits those same records. Destruction mode quarantines within the current view, queues versioned publication and allows restoration. The homepage separates current library counts from historical QA outcomes and hides compatibility downloads under a secondary disclosure.

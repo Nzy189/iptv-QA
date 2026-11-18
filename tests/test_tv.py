@@ -244,8 +244,9 @@ while time.time() < end:
 
 class TVServiceTests(unittest.TestCase):
     PASSWORD = 'test-password-123'
-    PLAYLISTS = (('set1', 'Set1', 'iptv_set1.m3u'), ('set2', 'Set2', 'iptv_set2.m3u'),
-                 ('set3', 'Set3', 'iptv_set3.m3u'), ('top3', 'Top3', 'iptv_top3.m3u'))
+    PLAYLISTS = (('top5', '综合频道 · Top5', 'iptv_ok.m3u'),
+                 ('set4', '今日补充', 'iptv_set4.m3u'),
+                 ('english', '英语频道', 'iptv_english.m3u'))
 
     @classmethod
     def setUpClass(cls):
@@ -469,9 +470,9 @@ class TVServiceTests(unittest.TestCase):
         self.assertEqual(status, 200)
         payload = json.loads(data)
         self.assertEqual([item['key'] for item in payload['playlists']],
-                         ['set1', 'set2', 'set3', 'top3'])
+                         ['top5', 'set4', 'english'])
         self.assertEqual(payload['playlists'][0]['url'],
-                         'http://127.0.0.1:%d/iptv_set1.m3u' % self.server.server_port)
+                         'http://127.0.0.1:%d/iptv_ok.m3u' % self.server.server_port)
 
     def test_set_chain_falls_back_to_backup_sets(self):
         client = self.logged_in_client()
@@ -493,12 +494,63 @@ class TVServiceTests(unittest.TestCase):
         self.assertIn(b'BANDWIDTH=1000000', data)
         self.assertEqual(client.request('GET', '/tv/play/0/3')[0], 404)
 
+    def test_backup_matches_channel_identity_after_reordering_or_removal(self):
+        from iptv_qa.common.playlists import parse_playlist
+        client = self.logged_in_client()
+        source = 'http://127.0.0.1:%d/iptv_set1.m3u' % self.server.server_port
+        self.assertEqual(client.request('POST', '/api/tv/source', {'url': source})[0], 200)
+        session = self.plugin.sessions.get(client.cookie.split('=', 1)[1])
+        port = self.upstream.server_port
+        reordered = parse_playlist('#EXTM3U\n#EXTINF:-1,频道二\n'
+            'http://127.0.0.1:%d/one/master.m3u8\n#EXTINF:-1,频道一\n'
+            'http://127.0.0.1:%d/two/master.m3u8\n' % (port, port))
+        session['sets'][session['chain'][1]] = reordered
+        status, _, data = client.request('GET', '/tv/play/0/1')
+        self.assertEqual(status, 200)
+        self.assertIn(b'BANDWIDTH=800000', data)
+        session['sets'][session['chain'][1]] = reordered[:1]
+        status, _, data = client.request('GET', '/tv/play/0/1')
+        self.assertEqual(status, 404)
+        self.assertEqual(json.loads(data)['error'], 'channel_not_in_backup')
+
+    def test_english_preset_is_independent(self):
+        target = self.data / 'english/published'
+        target.mkdir(parents=True, exist_ok=True)
+        (target / 'iptv_top3.m3u').write_text('#EXTM3U\n#EXTINF:-1,English News\n'
+            'http://127.0.0.1:%d/one/master.m3u8\n' % self.upstream.server_port, encoding='utf-8')
+        client = self.logged_in_client()
+        source = 'http://127.0.0.1:%d/iptv_english.m3u' % self.server.server_port
+        status, _, data = client.request('POST', '/api/tv/source', {'url': source})
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(data)['sets'], 1)
+        self.assertEqual(client.request('GET', '/tv/play/0')[0], 200)
+        self.assertEqual(client.request('GET', '/tv/play/0/1')[0], 404)
+
     def test_custom_source_has_no_backup_chain(self):
         client = self.logged_in_client()
         source = 'http://127.0.0.1:%d/list.m3u8' % self.upstream.server_port
         status, _, data = client.request('POST', '/api/tv/source', {'url': source})
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(data)['sets'], 1)
+        self.assertEqual(client.request('GET', '/tv/play/0/1')[0], 404)
+
+    def test_set4_is_independent_and_served_outside_scheduled_publication(self):
+        extras = self.data / 'extras'
+        extras.mkdir(exist_ok=True)
+        content = ('#EXTM3U\n#EXTINF:-1,独立频道\n'
+                   'http://127.0.0.1:%d/one/master.m3u8\n' % self.upstream.server_port)
+        (extras / 'iptv_set4.m3u').write_text(content, encoding='utf-8')
+        client = self.logged_in_client()
+        status, _, data = client.request('GET', '/iptv_set4.m3u')
+        self.assertEqual(status, 200)
+        self.assertEqual(data, (extras / 'iptv_set4.m3u').read_bytes())
+        source = 'http://127.0.0.1:%d/iptv_set4.m3u' % self.server.server_port
+        status, _, data = client.request('POST', '/api/tv/source', {'url': source})
+        self.assertEqual(status, 200)
+        payload = json.loads(data)
+        self.assertEqual(payload['sets'], 1)
+        self.assertEqual([c['name'] for c in payload['channels']], ['独立频道'])
+        self.assertEqual(client.request('GET', '/tv/play/0')[0], 200)
         self.assertEqual(client.request('GET', '/tv/play/0/1')[0], 404)
 
     def test_transcode_flow_serves_local_segments(self):
@@ -509,13 +561,14 @@ class TVServiceTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(headers['Content-Type'].startswith('application/vnd.apple.mpegurl'))
         text = data.decode('utf-8')
-        self.assertIn('/tv/tseg/0-0/seg00000.ts', text)
+        segment_path=next(line for line in text.splitlines() if line.startswith('/tv/tseg/'))
+        self.assertTrue(segment_path.endswith('/seg00000.ts'))
         self.assertNotIn('seg%05d', text)
-        status, _, data = client.request('GET', '/tv/tseg/0-0/seg00000.ts')
+        status, _, data = client.request('GET', segment_path)
         self.assertEqual(status, 200)
         self.assertEqual(data, b'FAKESEG000')
-        self.assertEqual(client.request('GET', '/tv/tseg/0-0/missing.ts')[0], 404)
-        self.assertEqual(client.request('GET', '/tv/tseg/0-0/..')[0], 404)
+        self.assertEqual(client.request('GET', segment_path.rsplit('/',1)[0]+'/missing.ts')[0], 404)
+        self.assertEqual(client.request('GET', segment_path.rsplit('/',1)[0]+'/..')[0], 404)
         self.assertEqual(client.request('GET', '/tv/transcode/99')[0], 404)
 
     def test_unknown_post_returns_404(self):

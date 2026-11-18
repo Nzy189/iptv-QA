@@ -2,6 +2,16 @@
 
 [English](DEPLOYMENT.md) | [简体中文](DEPLOYMENT.zh-CN.md) · [首页](../README.zh-CN.md)
 
+### 可选多 ECS 面板
+
+将 `IPTV_REGIONS_CONFIG` 指向私有 JSON 文件，可在同一页面先显示本机结果，再显示其他检测节点的结果：
+
+```json
+{"enabled": true, "local_name": "主节点", "nodes": [{"name": "其他节点", "url": "http://example.internal:8088"}]}
+```
+
+将 `enabled` 设为 `false` 或不设置该环境变量，即保留单机面板。节点 URL 必须是 HTTP(S) 源地址；服务端读取各节点历史和进度，连接失败会单独显示。只配置可信节点，必要时使用受保护网络或 HTTPS。节点提供专项检测接口时，可设置 `audit: true` 显示其进度。这只是页面聚合，各节点的检测、发布和历史仍独立。修改配置后重启 HTTP 服务。
+
 ## 独立模块
 
 部署必须包含整个 `iptv_qa/` 包（含 `playback/assets/`），不要只拷贝旧根目录脚本。可运行源码，也可 `python3 -m pip install .` 安装。旧脚本保持兼容，推荐新命令明确表达用途。
@@ -133,3 +143,7 @@ sudo systemctl start iptv-qa-sets.service
 ## 分层检测
 
 设置 `validation_policy: "tiered-v1"`、`video_quality_enabled: true`、`deep_validation_enabled: true` 和 `browser_proxy_check: true`。本轮基础音视频检查通过即可作为备用；深检与复检成功决定稳定优先级。`obs.publish_stable: true` 可在完整成功检测后上传独立 `iptv_stable.m3u`。部署代码本身不会把旧订阅重新判定为新结果。首次策略迁移跳过不可比的频道数比较，保留零结果和来源缩水保护，后续按同策略比较。先在隔离数据目录验证，并保留旧代码和配置供回退。详见[检测设计](DESIGN.zh-CN.md#可播与稳定分层)。
+
+## 总表后台服务
+
+详见[总表部署与恢复](LIBRARY.zh-CN.md)。私有配置启用共享数据库，隔离迁移后运行 `iptv-qa library worker --config CONFIG`，后台注入OBS凭据和可选加密依赖。网页仅需总表目录写权限及 `--library-config CONFIG`，不需要桶密钥。激活前保留原代码、配置和数据指针。

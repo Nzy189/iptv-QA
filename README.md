@@ -24,11 +24,22 @@ Run it on your own server, import the output into your M3U player or use built-i
 
 Tiered checking separates current A/V playback from long-term stability: Top3/Top5/sets prefer twice-verified sources and retain basic playable fallbacks; `iptv_stable.m3u` is stable-only. See [validation tiers](docs/DESIGN.md#playback-tiers).
 
+Optional [channel management](docs/LIBRARY.md) provides one persistent library, Top5 playback, reversible quarantine, versioned publication and private encrypted backups.
+
+## What's new in v0.2.0
+
+| Improvement | What it means |
+| --- | --- |
+| **Hedged source racing** | Clicking a channel loads its top three lines at once and plays whichever shows a picture first — channel switching waits for the fastest line, not a lucky one. |
+| **No more slow-start false kills** | The deep startup budget rises from 12 to 30 seconds: slow-starting but stable channels are kept, and startup speed only affects ranking, never qualification. |
+| **Unified channel library** | Channel identity separate from stream lines, versioned publication, reversible quarantine and encrypted backups, with up-to-five-line playback. |
+
 ## Why iptv-QA?
 
 | Benefit | What you get |
 | --- | --- |
 | **Check real video** | Decode actual frames and inspect media progression, rather than accepting an address solely because it responds. |
+| **Switch channels faster** | Hedged racing loads several lines at once and keeps the first one to show a picture. |
 | **Make channel choice easier** | Merge duplicate channel names and rank sources by startup, recent test results and historical reliability. |
 | **Keep alternatives ready** | Top3, Top5 and three single-source sets give you a main route and practical backups. |
 | **Curate your own extras** | Optionally append an operator-curated group, such as international news, to Top3 and the three sets without re-testing it. |

@@ -62,11 +62,11 @@ Long HLS segment periods extend observation to at least two target durations plu
 | `decode_seconds` | 4 | Initial decoded video duration |
 | `deep_seconds` | 30 | Minimum media and wall observation for each deep connection |
 | `fast_startup_seconds` | 5 | Preferred startup category |
-| `max_startup_seconds` | 12 | Wait limit for the first sampled video frames |
+| `max_startup_seconds` | 30 | Wait limit for the first sampled video frames |
 | `max_stall_seconds` | 8 | Additional lack of progress after estimated buffer exhaustion |
 | `recheck_interval_seconds` | 1800 | Minimum gap before independent reconnection |
 
-These values are project heuristics, not thresholds mandated by Apple or HLS standards.
+These values are project heuristics, not thresholds mandated by Apple or HLS standards. The startup wait limit separates playable sources from dead ones; within that budget, startup speed is a ranking preference (`fast_startup_seconds`), not a pass/fail criterion.
 
 ## Ranking and resource control
 
@@ -102,3 +102,7 @@ The next priorities are full audio/video quality analysis, actual rendition matc
 - [Apple HLS authoring requirements](https://developer.apple.com/streaming/hls-authoring-specification-for-apple-devices.html)
 - [FFmpeg command-line documentation](https://ffmpeg.org/ffmpeg.html)
 - [Apple playback access logs](https://developer.apple.com/documentation/avfoundation/avplayeritemaccesslogevent)
+
+## Managed publication
+
+When channel-library integration is enabled, only successful complete QA results update library eligibility; manual disables/quarantines remain intact. Media observations are retained separately from browser feedback. Publication then derives all managed views from a consistent database snapshot. See [library design](LIBRARY.md).

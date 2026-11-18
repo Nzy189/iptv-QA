@@ -18,6 +18,9 @@ def main(argv=None):
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
     cfg = json.loads(Path(args.config).read_text(encoding='utf-8'))
+    if cfg.get('channel_library', {}).get('enabled'):
+        from iptv_qa.library.store import configured_path
+        cfg['channel_library'] = dict(cfg['channel_library'],path=str(configured_path(cfg)),data_root=cfg['data_dir'])
     data = Path(cfg['data_dir'])
     data.mkdir(parents=True, exist_ok=True)
     import fcntl

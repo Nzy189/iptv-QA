@@ -32,8 +32,10 @@ Unit tests show that rules are implemented consistently. They cannot establish r
 
 ## Module and package validation / 模块与打包验证
 
-Module regressions in `tests/test_modules.py` cover command/import independence, maintenance locks, player-only routing and lifecycle cleanup. Build using `python3 -m pip wheel . --no-deps --wheel-dir dist/wheels`, then run `python3 scripts/validate_package.py --wheel dist/wheels/iptv_qa-0.1.0-py3-none-any.whl`. This loads the built artifact in isolation and checks bundled frontend resources and legacy entry points.
+Module regressions in `tests/test_modules.py` cover command/import independence, maintenance locks, player-only routing and lifecycle cleanup. Build using `python3 -m pip wheel . --no-deps --wheel-dir dist/wheels`, then run `python3 scripts/validate_package.py --wheel dist/wheels/iptv_qa-0.2.0-py3-none-any.whl`. This loads the built artifact in isolation and checks bundled frontend resources and legacy entry points.
 
 ## Tiered playback regressions
 
 `tests/test_tiers.py` checks transient downgrade, hard exclusions, independent audio duration, stable ranking and publication-policy migration. `scripts/validate_quality.py --bin-dir PATH` additionally exercises tiered publication with real A/V HLS, proxy delivery and rejection of video without audio. Fixture success is not a receiver playback guarantee.
+
+Run `node tests/player_navigation.test.js` to exercise browser-side backup exhaustion, sequential scanning beyond 15 channels, random non-repetition, stale callback isolation and the watchdog without external streams.

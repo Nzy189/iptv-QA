@@ -155,7 +155,7 @@ class WebTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertTrue(headers['Content-Type'].startswith('text/html'))
         self.assertNotIn('Content-Disposition', headers)
-        self.assertIn('IPTV 检测汇总'.encode('utf-8'), data)
+        self.assertIn('频道中心'.encode('utf-8'), data)
         self.assertIn(b'/api/status', data)
         self.assertEqual(headers['Cache-Control'], 'no-store')
         self.assertEqual(self.get('/', 'HEAD')[2], b'')

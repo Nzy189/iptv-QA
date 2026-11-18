@@ -2,7 +2,10 @@
 import re
 
 TV_COOKIE = 'tvsess'
-STATIC_FILES = {'/tv/': ('index.html', 'text/html; charset=utf-8'),
+STATIC_FILES = {'/tv/manage/': ('manage.html', 'text/html; charset=utf-8'),
+                '/tv/manage.js': ('manage.js', 'application/javascript; charset=utf-8'),
+                '/tv/manage.css': ('manage.css', 'text/css; charset=utf-8'),
+                '/tv/': ('index.html', 'text/html; charset=utf-8'),
                 '/tv/app.js': ('app.js', 'application/javascript; charset=utf-8'),
                 '/tv/style.css': ('style.css', 'text/css; charset=utf-8'),
                 '/tv/hls.min.js': ('hls.min.js', 'application/javascript; charset=utf-8'),

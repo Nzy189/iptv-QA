@@ -74,7 +74,7 @@ class ReportingTests(unittest.TestCase):
             self.make_run(data, '20261115T000000Z-22222222', ['B', 'C', 'D'])
             target, count = reporting.refresh(data, public_base='https://reports.example.test')
             self.assertEqual(count, 2)
-            self.assertIn('href="https://reports.example.test/iptv_ok.m3u"', (target / 'iptv_summary.html').read_text(encoding='utf-8'))
+            self.assertNotIn('href="https://reports.example.test/iptv_ok.m3u"', (target / 'iptv_summary.html').read_text(encoding='utf-8'))
             rows = json.loads((target / 'iptv_history.json').read_text(encoding='utf-8'))['runs']
             latest = rows[-1]
             self.assertEqual(latest['channels_delta'], 1)

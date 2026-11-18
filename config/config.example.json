@@ -42,7 +42,7 @@
   "deep_workers": 6,
   "deep_per_host": 1,
   "fast_startup_seconds": 5,
-  "max_startup_seconds": 12,
+  "max_startup_seconds": 30,
   "max_stall_seconds": 8,
   "recheck_interval_seconds": 1800,
   "download_timeout": 40,
@@ -78,5 +78,14 @@
       "https://iptv-org.github.io/iptv/index.m3u"
     ]
   },
-  "exclude_radio": true
+  "exclude_radio": true,
+  "channel_library": {
+    "enabled": false,
+    "backup": {
+      "enabled": false,
+      "bucket": "YOUR_PRIVATE_BACKUP_BUCKET",
+      "prefix": "library-private",
+      "key_path": "/etc/iptv-qa/library-backup.key"
+    }
+  }
 }

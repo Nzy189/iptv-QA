@@ -4,6 +4,7 @@ import importlib
 import sys
 
 COMMANDS = {
+    'library': ('iptv_qa.library.cli', 'Manage channel library, publication and private backups'),
     'run': ('iptv_qa.workflows.scheduled', 'Full catalogue, checking and publication workflow'),
     'check': ('iptv_qa.detection.checker', 'Check configured sources and build ranked outputs'),
     'catalog': ('iptv_qa.catalog.cli', 'Download and classify candidates without checking media'),

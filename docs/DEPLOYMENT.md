@@ -26,6 +26,16 @@ The password belongs in private `tv.env` (see `config/tv.env.example`), outside 
 
 These are source and service-template changes, not an automatic restart of an existing deployment. Validate upgrades in an isolated directory before selecting the service mode, ports and environment.
 
+### Optional multi-ECS dashboard
+
+Set `IPTV_REGIONS_CONFIG` to a private JSON file to show local results followed by results from other dashboards on one page:
+
+```json
+{"enabled": true, "local_name": "Primary", "nodes": [{"name": "Secondary", "url": "http://example.internal:8088"}]}
+```
+
+Set `enabled` to `false`, or omit the environment variable, for the single-server dashboard. Each node URL must be an HTTP(S) origin. The server fetches node history and status; a failed node is reported separately. Configure trusted origins and use a protected network or HTTPS where needed. A node with an optional audit endpoint can set `audit: true` to display that progress. This aggregates displays only; checks, publications and histories remain independent. Restart the HTTP service after changing the configuration.
+
 
 ## Source checkout and prerequisites
 
@@ -133,3 +143,7 @@ Detailed runs default to 14 days of retention, while the current publication and
 ## Tiered checking
 
 Use `validation_policy: "tiered-v1"`, `video_quality_enabled: true`, `deep_validation_enabled: true` and `browser_proxy_check: true`. Basic A/V checks admit current playable fallbacks; deep/reconnect success determines stable priority. `obs.publish_stable: true` optionally uploads the separate `iptv_stable.m3u` after a successful full run. Existing files are not reclassified merely by deploying code. The first policy migration skips incompatible channel-count comparison but retains zero-result and input-source guards; subsequent runs compare the same policy. Test in an isolated data directory first; retain the prior code/configuration for rollback. See [design](DESIGN.md#playback-tiers).
+
+## Channel-library service
+
+See [library deployment and recovery](LIBRARY.md). Enable the shared database in private config, migrate in isolation, and run `iptv-qa library worker --config CONFIG` with OBS credentials and the optional crypto dependency. Give the web service write access only to the library directory and pass `--library-config CONFIG`; it does not need OBS credentials. Preserve old code/config/data pointers before activation.

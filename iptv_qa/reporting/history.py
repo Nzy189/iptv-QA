@@ -209,7 +209,7 @@ def render_csv(rows):
     return '\ufeff' + buffer.getvalue()
 
 
-def render_html(rows, generated_at, public_base=''):
+def render_html(rows, generated_at, public_base='', catalog_state=None):
     esc = lambda value: html.escape(str(value), quote=True)
     latest = rows[-1] if rows else None
     latest_full = next((r for r in reversed(rows) if r['has_statistics']), None)
@@ -256,16 +256,16 @@ def render_html(rows, generated_at, public_base=''):
             table.append('<tr class="detail"><td colspan="10"><details><summary>本轮详情</summary>{}</details></td></tr>'.format(''.join('<p>{}</p>'.format(esc(v)) for v in details)))
     latest_status = '暂无检测记录' if not latest else '{} · {} · OBS {}'.format(local_time(latest['started_at']), STATES[latest['state']], OBS_STATES.get(latest['obs_state'], '未知'))
     latest_note = '' if not latest_full or latest is latest_full else '<p class="notice">最近一轮未完成完整统计，下方指标显示上一次完整检测。请查看历史表中的失败状态。</p>'
-    links = [('iptv_summary.html', '最新报告'), ('iptv_ok.m3u', 'Top5 订阅'), ('iptv_top3.m3u', 'Top3 订阅'),
-             ('iptv_set1.m3u', '第1套 · 主用'), ('iptv_set2.m3u', '第2套 · 备用'), ('iptv_set3.m3u', '第3套 · 备用'),
-             ('iptv_english.m3u', '英语订阅'), ('iptv_history.csv', '下载 CSV'), ('iptv_history.json', 'JSON 历史')]
-    if any(r.get('published') and r.get('validation_policy') == 'tiered-v1' for r in rows):
-        links.append(('iptv_stable.m3u', '稳定精选'))
-    nav = ''.join('<a href="{}">{}</a>'.format(esc(public_base.rstrip('/') + '/' + name if public_base else name), label) for name, label in links)
+    links = [('iptv_top3.m3u', '兼容 Top3'),('iptv_set1.m3u', '兼容 Set1'),
+             ('iptv_set2.m3u', '兼容 Set2'),('iptv_set3.m3u', '兼容 Set3'),
+             ('iptv_history.csv', '下载 CSV'),('iptv_history.json', 'JSON 历史')]
+    advanced = ''.join('<a href="{}">{}</a>'.format(esc(public_base.rstrip('/')+'/'+name if public_base else name),label) for name,label in links)
+    nav = '<a class="primary" href="/tv/">播放频道</a><a href="/tv/manage/">管理频道</a>'
+    nav += '<details class="advanced"><summary>历史与兼容文件</summary><nav>'+advanced+'</nav></details>'
     sets_panel = ''
     if latest_full and latest_full.get('sets'):
         s = latest_full['sets']
-        sets_panel = '<section class="card" style="margin-top:18px"><b>三套独立订阅</b><p>每套 {} 个频道，每个频道只出现一次。第 1 套主用，第 2、3 套备用。</p><small>{} 个频道有至少 2 条可用线路，{} 个有 3 条。缺少备用线路时复用最后一条，三套频道及顺序一致。</small></section>'.format(
+        sets_panel = '<section class="card" style="margin-top:18px"><b>兼容套表 · 自动生成</b><p>每套 {} 个频道，每个频道只出现一次。第 1 套主用，第 2、3 套备用。</p><small>{} 个频道有至少 2 条可用线路，{} 个有 3 条。缺少备用线路时复用最后一条，三套频道及顺序一致。</small></section>'.format(
             esc(shown(s['channels_per_set'])), esc(shown(s['channels_with_backup'])), esc(shown(s['channels_with_three_lines'])))
     comparison_panel = ''
     quality_panel = ''
@@ -286,20 +286,32 @@ def render_html(rows, generated_at, public_base=''):
             esc(shown(r['available_channels'])), esc(shown(r['top5_entries'])), esc(shown(r['top3_entries']))) for r in c['sources'])
         comparison_panel = '<h2>来源横向对比</h2><p class="muted">重复频道 {} 个；新增可用频道 {} 个；新库优选线路胜出 {} 个频道；补齐原本失效频道 {} 个。</p><div class="table-wrap"><table><thead><tr><th>来源</th><th>候选地址</th><th>本轮可播地址</th><th>可用频道</th><th>入选 Top5</th><th>入选 Top3</th></tr></thead><tbody>{}</tbody></table></div><small>同一线路来自多个来源时分别计入来源贡献。</small>'.format(
             esc(shown(c['overlap_channels'])), esc(shown(c['new_playable_channels'])), esc(shown(c['repository_best_channels'])), esc(shown(c['restored_channels'])), cells)
+    if catalog_state:
+        cards = []
+        for key,label,tip in [('main','综合频道','每台最多五条主备线路'),('supplement','今日补充','新增来源，独立分组'),('english','英语频道','新闻与英语收听'),('removed','清理区','可在频道管理中恢复')]:
+            cards.append('<div class="card"><span>{}</span><strong>{}</strong><small>{}</small></div>'.format(label,esc(shown(catalog_state.get(key))),tip))
+        publication = catalog_state.get('publication') or {}
+        current_note = '<section class="card current"><b>当前总表版本 {} · 已发布版本 {}</b><p>同步状态：{}。最近检测未发布时，继续使用已发布内容。</p></section>'.format(
+            esc(catalog_state['revision']),esc(catalog_state['published_revision']),
+            esc({'synced':'已同步','sync_failed':'同步失败，可在管理页重试','local_only':'仅本地','pending':'同步中'}.get(publication.get('state'),'尚未发布')))
+    else:
+        current_note = '<p class="notice">下方统计属于最近完成的检测，可能尚未发布，不代表当前在线频道数量。</p>'
+    if sets_panel:
+        sets_panel = '<details class="compat"><summary>兼容套表说明</summary>'+sets_panel+'</details>'
     return '''<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>IPTV 检测汇总</title>
+<title>频道中心 · iptv-QA</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#f4f6fa;color:#18243a;font-family:system-ui,-apple-system,"Microsoft YaHei",sans-serif;font-size:15px;line-height:1.6}main{max-width:1320px;margin:auto;padding:36px 24px}h1{margin:0;font-size:30px}h2{font-size:20px;margin:30px 0 14px}.muted,small{color:#63738a}small{display:block;font-size:12px}.top{display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap}a{color:#155acc;text-decoration:none}nav{display:flex;gap:12px;flex-wrap:wrap}nav a{background:white;border:1px solid #d9e1ee;padding:8px 12px;border-radius:8px}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:24px}.card{background:white;padding:20px;border-radius:12px;border:1px solid #e2e7ef}.card strong{display:block;font-size:34px;margin:5px 0}.table-wrap{overflow:auto;background:white;border:1px solid #e2e7ef;border-radius:12px}table{border-collapse:collapse;width:100%;white-space:nowrap;text-align:left}th,td{padding:12px 14px;border-bottom:1px solid #edf0f5}th{font-weight:600;font-size:13px;color:#63738a;background:#fbfcfe}.badge{padding:3px 8px;border-radius:5px;font-size:12px}.ok{background:#e1f4e8;color:#176937}.warn{background:#fff0da;color:#8b5200}.detail td{padding:0 14px 10px}.detail details{white-space:normal;font-size:13px;color:#63738a}.detail p{margin:6px 0;overflow-wrap:anywhere}.detail summary{cursor:pointer}.notice{padding:12px;background:#fff0da;border-radius:8px}.foot{font-size:13px;margin-top:18px;color:#63738a}@media(max-width:760px){main{padding:24px 14px}.cards{grid-template-columns:repeat(2,1fr)}.card{padding:14px}.card strong{font-size:27px}}
-</style></head><body><main>
-<div class="top"><div><h1>IPTV 检测汇总</h1><div class="muted">按定时计划检测 · 自动生成 Top5 / Top3 · 覆盖 OBS 订阅</div></div>
+.primary{background:#155acc;color:white}.advanced{position:relative}.advanced summary{padding:10px 14px;border:1px solid #dce4f0;border-radius:9px;cursor:pointer;color:#155acc}.advanced[open] nav{padding:14px;max-width:650px;gap:10px}.compat{margin:18px 0}.compat summary{cursor:pointer;color:#63738a}.current{margin:20px 0}.current p{color:#63738a}</style></head><body><main>
+<div class="top"><div><h1>频道中心</h1><div class="muted">统一管理频道 · 自动切换备用线路 · 可恢复清理与私有备份</div></div>
 <nav>''' + nav + '''</nav></div>
 <p class="muted">最近一轮：''' + esc(latest_status) + '''</p>''' + latest_note + '''
-<section class="cards">''' + ''.join(cards) + '''</section>''' + sets_panel + quality_panel + '''
-''' + comparison_panel + '''<h2>历次检测 <small>页面展示最近 90 次；CSV 和 JSON 包含全部汇总记录。时间为迪拜 UTC+4。</small></h2>
+''' + current_note + '''<section class="cards">''' + ''.join(cards) + '''</section>''' + sets_panel + quality_panel + '''
+''' + comparison_panel + '''<h2>检测历史 <small>页面展示最近 90 次；CSV 和 JSON 包含全部汇总记录。时间为迪拜 UTC+4。</small></h2>
 <div class="table-wrap"><table><thead><tr><th>检测开始</th><th>检测地址</th><th>本轮可播地址</th><th>未通过地址</th><th>可用频道</th><th>频道变化</th><th>Top5</th><th>Top3</th><th>分钟</th><th>状态 / OBS</th></tr></thead><tbody>''' + ''.join(table) + '''</tbody></table></div>
 <p class="foot">按服务器定时计划执行，检测结束后更新。分层策略的可播地址包含稳定优选、基础可播和待复查；旧策略为严格深检口径，不同策略不计算增减。失败原因按检测阶段记录统计；增减对比上一次完成统计的检测。失败或中断时未知指标显示“—”。详细日志保留 14 天，汇总长期保留。</p>
-<p class="foot">汇总生成：''' + esc(local_time(generated_at)) + '''（迪拜） / ''' + esc(local_time(generated_at, 8)) + '''（北京）。报告随检测自动更新；点击上方“最新报告”获取最新文件。</p>
+<p class="foot">汇总生成：''' + esc(local_time(generated_at)) + '''（迪拜） / ''' + esc(local_time(generated_at, 8)) + '''（北京）。报告随检测自动更新；播放与管理入口使用当前总表；历史统计保留当轮检测口径。</p>
 </main></body></html>'''
 
 
@@ -309,7 +321,12 @@ def refresh(data_dir, public_base=''):
     generated_at = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
     target = data_dir / 'summaries'
     target.mkdir(exist_ok=True)
-    atomic(target / FILES[0], render_html(rows, generated_at, public_base))
+    catalog_state = None
+    library_path = data_dir / 'library/catalog.sqlite3'
+    if library_path.is_file():
+        from iptv_qa.library.store import Library
+        catalog_state = Library(library_path).summary()
+    atomic(target / FILES[0], render_html(rows, generated_at, public_base, catalog_state))
     atomic(target / FILES[1], render_csv(rows))
     atomic(target / FILES[2], json.dumps({'generated_at': generated_at, 'display_timezone': 'Asia/Dubai', 'runs': rows}, ensure_ascii=False, indent=2) + '\n')
     return target, len(rows)

@@ -87,6 +87,18 @@ def validate(bin_dir="/usr/bin"):
             assert tier_report['stable_endpoints'] == 1, tier_report
             assert tier_report['validation_policy'] == 'tiered-v1', tier_report
             assert 'TestTV' in (root/'tiered-data/published/iptv_stable.m3u').read_text()
+            # The approved QA result must flow through the same library publisher.
+            library_root = root / 'library-data'
+            library_cfg = dict(tier_cfg, data_dir=str(library_root), channel_library={
+                'enabled': True, 'path': str(library_root/'library/catalog.sqlite3'),
+                'data_root': str(library_root)})
+            app.write_json(root/'library-config.json', library_cfg)
+            assert app.main(['--config', str(root/'library-config.json')]) == 0
+            from iptv_qa.library.store import Library
+            managed = Library(library_root/'library/catalog.sqlite3')
+            assert len(managed.view('main')) == 1
+            assert managed.view('main')[0]['lines'][0]['evidence'] == 'stable'
+            assert 'library_version' in json.loads((library_root/'published/report.json').read_text())
             # A video-only source cannot pass basic A/V checks.
             muted = subprocess.run([cfg['ffmpeg'], '-v', 'error', '-f', 'lavfi', '-i',
                 'testsrc=size=160x90:rate=10', '-t', '6', '-threads', '1', '-c:v',

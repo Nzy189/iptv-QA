@@ -237,13 +237,13 @@ def check_video(ep, probe_record, ua, cfg, deep=False):
     # Passthrough avoids counting frames invented by frame-rate conversion.
     args += ['-map', mapping, '-an', '-sn', '-dn', '-threads', '1', '-fps_mode', 'passthrough',
              '-stats_period', '0.25', '-progress', 'pipe:1', '-nostats', '-f', 'null', '-']
-    timeout = max(cfg.get('deep_timeout', 90), target + cfg.get('max_startup_seconds', 12) + 15) if deep else cfg.get('decode_timeout', 40)
+    timeout = max(cfg.get('deep_timeout', 90), target + cfg.get('max_startup_seconds', 30) + 15) if deep else cfg.get('decode_timeout', 40)
     from iptv_qa.detection import tiers
     basic = tiers.enabled(cfg) and not deep
     if basic:
         args.remove('-xerror')
     result = observe_video(args, timeout,
-                           target, (cfg.get('decode_timeout', 40) if basic else cfg.get('max_startup_seconds', 12)), cfg.get('max_stall_seconds', 8),
+                           target, (cfg.get('decode_timeout', 40) if basic else cfg.get('max_startup_seconds', 30)), cfg.get('max_stall_seconds', 8),
                            wall_window=target if deep else 0)
     if result['ok'] and hls is not None:
         try:
@@ -466,7 +466,7 @@ def validate_candidates(channels, endpoints, probes, decodes, reliability, ua, c
     return {'enabled': True, 'deep_tested': len(first_checks), 'deep_passed': len(survivors),
             'recheck_tested': len(second_checks), 'verified_twice': sum(r['ok'] for r in second_checks.values()),
             'deep_seconds': cfg.get('deep_seconds', 30), 'recheck_interval_seconds': cfg.get('recheck_interval_seconds', 1800),
-            'max_startup_seconds': cfg.get('max_startup_seconds', 12), 'errors': dict(errors)}
+            'max_startup_seconds': cfg.get('max_startup_seconds', 30), 'errors': dict(errors)}
 
 
 def render_playlists(channels, probes, decodes, reliability, epg_url=''):
@@ -703,6 +703,13 @@ def update_run_summaries(cfg):
 
 
 def generate_current_sets(cfg):
+    from iptv_qa.library.store import configured_path
+    if configured_path(cfg) is not None:
+        from iptv_qa.library.publishing import Publisher
+        result = Publisher(cfg).publish()
+        if result['state'] == 'sync_failed':
+            raise RuntimeError('Library publication failed')
+        return result
     data_dir = Path(cfg['data_dir'])
     export = (data_dir / 'published/current').resolve()
     report = json.loads((export / 'report.json').read_text(encoding='utf-8'))
@@ -794,6 +801,13 @@ def main(argv=None):
             update_run_summaries(cfg)
             lock.close()
     if args.upload_only:
+        from iptv_qa.library.store import configured_path
+        if configured_path(cfg) is not None:
+            try:
+                from iptv_qa.library.publishing import Publisher
+                return 2 if Publisher(cfg).publish()['state']=='sync_failed' else 0
+            finally:
+                lock.close()
         report, report_path = None, None
         try:
             if not cfg.get('obs', {}).get('enabled'):
@@ -918,6 +932,10 @@ def main(argv=None):
             quality_report = validate_candidates(channels, endpoints, probes, decodes, prior_reliability,
                                                  ua, cfg, run_dir, status)
             atomic_text(run_dir / 'final_decodes.jsonl', ''.join(json.dumps(r, ensure_ascii=False) + '\n' for r in decodes.values()))
+        if not args.limit and cfg.get('channel_library',{}).get('enabled'):
+            from iptv_qa.library.store import Library, configured_path
+            outcomes = {i:decodes.get(i,r) for i,r in probes.items()}
+            Library(configured_path(cfg)).observe_detector(outcomes,cfg.get('validation_policy','strict-v1'))
         status('render')
         if args.limit:
             reliability = {}
@@ -981,6 +999,40 @@ def main(argv=None):
             state['state'] = 'sample_complete' if args.limit else 'publication_blocked'
             LOG.warning('%s', reason)
         else:
+            from iptv_qa.library.store import Library, configured_path
+            library_path = configured_path(cfg)
+            if library_path is not None:
+                from iptv_qa.library.publishing import Publisher
+                library = Library(library_path)
+                scope = 'english' if cfg.get('language_scope') == 'en' else 'main'
+                evidence={}
+                for channel in channels.values():
+                    for entry in channel['entries'].values():
+                        raw_id=entry['endpoint']['id']
+                        if raw_id in decodes:
+                            row=dict(decodes[raw_id],sources=endpoints[raw_id].get('sources',[]))
+                            evidence[entry.get('published_endpoint_id',raw_id)]=row
+                            evidence[raw_id]=row
+                library.ingest(scope, append_group(outputs[5], news_lines), 'qa:' + run_id,
+                               evidence=evidence, report=report)
+                try:
+                    published = Publisher(cfg, library=library).publish()
+                except BlockingIOError:
+                    library.enqueue('publish',library.revision())
+                    published={'id':'queued','revision':library.revision(),'state':'pending'}
+                if published['state']=='sync_failed':
+                    library.enqueue('publish',library.revision())
+                report.update(published=published['state'] in ('synced','local_only'),
+                              library_version=published['id'], library_revision=published['revision'],
+                              obs={'state':'uploaded' if published['state']=='synced' else
+                                   'not_configured' if published['state']=='local_only' else
+                                   'pending' if published['state']=='pending' else 'failed'})
+                write_json(export_dir / 'report.json', report)
+                state.update(state='complete' if published['state'] != 'sync_failed' else 'upload_failed',
+                    channels_available=stats['channels_available'],top3_entries=stats['top3_entries'],
+                    top5_entries=stats['top5_entries'],finished_at=utcnow())
+                status('finished')
+                return 0 if state['state']=='complete' else 2
             report['published'] = True
             report['obs'] = {'enabled': cfg.get('obs', {}).get('enabled', False), 'state': 'pending' if cfg.get('obs', {}).get('enabled') else 'not_configured'}
             write_json(export_dir / 'report.json', report)

@@ -12,7 +12,7 @@ from collections import OrderedDict
 from pathlib import Path
 from urllib import request as urlrequest
 from urllib.error import URLError
-from urllib.parse import unquote, urljoin, urlsplit
+from urllib.parse import unquote, urljoin, urlsplit, parse_qs
 
 from iptv_qa.common.playlists import parse_playlist
 
@@ -33,13 +33,20 @@ class TVPlugin:
     """Serves /tv/ pages and proxies only channels discovered in loaded playlists."""
 
     def __init__(self, password, static_dir=None, playlists=(), public_base='', ffmpeg=None,
-                 transcode_limit=2, transcode_idle_seconds=90):
+                 transcode_limit=2, transcode_idle_seconds=90, library=None):
+        self.library = library
+        self.library_api = None
+        if library is not None:
+            from iptv_qa.library.api import LibraryAPI
+            self.library_api = LibraryAPI(library)
         self.password = password.encode('utf-8')
         self.static_dir = Path(static_dir) if static_dir is not None else assets_dir()
         self.playlists = tuple(playlists)
         self.public_base = public_base
         self.secret = secrets.token_bytes(32)
         self.token = hmac.new(self.secret, b'iptv-qa-tv-session-v1', hashlib.sha256).hexdigest()
+        self.auth_tokens = OrderedDict()
+        self.auth_lock = threading.Lock()
         self.registry = Registry()
         self.sessions = Sessions()
         self.transcoders = Transcoders(ffmpeg or os.environ.get('IPTV_TV_FFMPEG', 'ffmpeg'),
@@ -70,7 +77,17 @@ class TVPlugin:
 
     def authorized(self, handler):
         value = self.session_token(handler)
-        return bool(value) and hmac.compare_digest(value, self.token)
+        with self.auth_lock:
+            return bool(value) and self.auth_tokens.get(value,0)>time.time()
+
+    def playback_session(self, handler):
+        token=self.session_token(handler)
+        source=parse_qs(urlsplit(handler.path).query).get('source_id',[''])[0]
+        return self.sessions.get(token+':'+source) if source and token else self.sessions.get(token)
+
+    def save_source(self, token, session):
+        self.sessions.set_source(token,session)
+        self.sessions.set_source(token+':'+session['source_id'],session)
 
     def send_media(self, handler, code, body, content_type, extra_headers=None):
         handler.send_response(code)
@@ -102,6 +119,8 @@ class TVPlugin:
 
     def handle_get(self, handler):
         path = unquote(urlsplit(handler.path).path)
+        if path in ('/api/library/state','/api/library/status'):
+            return self.handle_library(handler, False)
         if path in STATIC_FILES:
             return self.serve_static(handler, path)
         if path == '/api/tv/session':
@@ -124,6 +143,8 @@ class TVPlugin:
 
     def handle_post(self, handler):
         path = unquote(urlsplit(handler.path).path)
+        if path == '/api/library/action':
+            return self.handle_library(handler, True)
         if path == '/api/tv/login':
             return self.handle_login(handler)
         if path == '/api/tv/source':
@@ -132,6 +153,34 @@ class TVPlugin:
                 return True
             return self.handle_source(handler)
         return False
+
+    def handle_library(self, handler, mutation):
+        if not self.authorized(handler):
+            self.send_json(handler, {'error':'unauthorized'}, 401)
+            return True
+        if self.library_api is None:
+            self.send_json(handler, {'error':'library_not_configured'}, 503)
+            return True
+        from iptv_qa.library.store import Conflict
+        try:
+            result = self.library_api.post(handler,self) if mutation else self.library_api.get(handler,self)
+            self.send_json(handler, dict(result,ok=True))
+        except Conflict as error:
+            self.send_json(handler, {'error':str(error)}, 409)
+        except (ValueError,TypeError,KeyError) as error:
+            self.send_json(handler, {'error':str(error)[:100]}, 400)
+        except (OSError,Exception) as error:
+            self.send_json(handler, {'error':type(error).__name__}, 503)
+        return True
+
+    def channel_metadata(self, session):
+        if session.get('library_scope'):
+            return [{'name':e['name'],'group':e['group_name'],'id':e['id'],
+                     'line_count':len(e['lines'])} for e in session['channels']]
+        candidates = session.get('candidates')
+        return [{'name':e['name'],'group':e['group'],
+                 'line_count':len(candidates[i]) if candidates else len(session['chain'])}
+                for i,e in enumerate(session['channels'])]
 
     def serve_static(self, handler, path):
         name, mime = STATIC_FILES[path]
@@ -159,7 +208,7 @@ class TVPlugin:
 
     def _set_chain(self, url, host):
         """Loaded set first, then the remaining aligned backup sets in order."""
-        set_names = [name for key, label, name in self.playlists if key.startswith('set')]
+        set_names = ['iptv_set1.m3u', 'iptv_set2.m3u', 'iptv_set3.m3u']
         tail = url.rstrip('/').rsplit('/', 1)[-1].lower()
         loaded = next((name for name in set_names if name.lower() == tail), None)
         if loaded is None:
@@ -173,10 +222,11 @@ class TVPlugin:
             return True
         session = self.sessions.get(self.session_token(handler))
         if session:
-            channels = [{'name': entry['name'], 'group': entry['group']} for entry in session['channels']]
+            channels = self.channel_metadata(session)
             self.send_json(handler, {'ok': True, 'source': session['source'],
                                      'count': len(channels), 'channels': channels,
-                                     'sets': len(session.get('chain') or [session['source']])})
+                                     'sets': max([c.get('line_count',1) for c in channels] or [1]),
+                                     'source_id':session.get('source_id',''), 'library_scope':session.get('library_scope','')})
         else:
             self.send_json(handler, {'ok': True, 'source': '', 'count': 0, 'channels': [], 'sets': 1})
         return True
@@ -191,7 +241,11 @@ class TVPlugin:
             time.sleep(1.0)
             self.send_json(handler, {'error': 'wrong_password'}, 401)
             return True
-        cookie = '%s=%s; Path=/; Max-Age=604800; HttpOnly; SameSite=Strict' % (TV_COOKIE, self.token)
+        token=self.session_token(handler) if self.authorized(handler) else secrets.token_urlsafe(32)
+        with self.auth_lock:
+            self.auth_tokens[token]=time.time()+604800
+            while len(self.auth_tokens)>64:self.auth_tokens.popitem(last=False)
+        cookie = '%s=%s; Path=/; Max-Age=604800; HttpOnly; SameSite=Strict' % (TV_COOKIE, token)
         self.send_json(handler, {'ok': True}, 200, {'Set-Cookie': cookie})
         return True
 
@@ -207,6 +261,22 @@ class TVPlugin:
         if is_blocked_url(url):
             self.send_json(handler, {'error': 'blocked_url'}, 400)
             return True
+        scope_map = {'iptv_ok.m3u':'main','iptv_top5.m3u':'main',
+                     'iptv_set4.m3u':'supplement','iptv_english.m3u':'english'}
+        if self.library is not None:
+            scope = next((v for k,v in scope_map.items() if url == self._playlist_url(k,handler.headers.get('Host'))),None)
+            if scope:
+                snapshot = self.library.snapshot()
+                entries = self.library.view_snapshot(snapshot,scope)
+                session = {'source':url,'channels':entries,'chain':[url], 'sets':{},
+                    'source_id':secrets.token_urlsafe(16), 'library_scope':scope,
+                    'library_revision':snapshot['revision']}
+                self.save_source(self.session_token(handler),session)
+                channels = self.channel_metadata(session)
+                self.send_json(handler, {'ok':True,'count':len(channels),'channels':channels,
+                    'sets':max([c['line_count'] for c in channels] or [1]),
+                    'source_id':session['source_id'],'library_scope':scope})
+                return True
         try:
             _, _, data, _ = fetch_upstream(url, {}, MAX_PLAYLIST_BYTES)
         except (URLError, OSError, ValueError, ssl.SSLError) as error:
@@ -217,13 +287,23 @@ class TVPlugin:
         except ValueError as error:
             self.send_json(handler, {'error': 'invalid_playlist', 'detail': str(error)[:200]}, 502)
             return True
-        channels = [{'name': entry['name'], 'group': entry['group']} for entry in entries]
         chain = self._set_chain(url, handler.headers.get('Host'))
-        self.sessions.set_source(self.session_token(handler),
-                                 {'source': url, 'channels': entries, 'chain': chain,
-                                  'sets': {chain[0]: entries}})
-        self.send_json(handler, {'ok': True, 'count': len(entries), 'channels': channels,
-                                 'sets': len(chain)})
+        candidates = None
+        if urlsplit(url).path.rsplit('/',1)[-1] in ('iptv_ok.m3u','iptv_top5.m3u'):
+            grouped = OrderedDict()
+            for entry in entries:
+                bucket = grouped.setdefault(entry['key'],[])
+                if len(bucket)<5 and entry['endpoint']['id'] not in {e['endpoint']['id'] for e in bucket}:
+                    bucket.append(entry)
+            candidates = list(grouped.values())
+            entries = [bucket[0] for bucket in candidates]
+        session = {'source':url,'channels':entries,'chain':chain,'sets':{chain[0]:entries},
+                   'candidates':candidates,'source_id':secrets.token_urlsafe(16)}
+        self.save_source(self.session_token(handler),session)
+        channels = self.channel_metadata(session)
+        self.send_json(handler, {'ok':True,'count':len(entries),'channels':channels,
+            'sets':max([c['line_count'] for c in channels] or [1]),'source_id':session['source_id'], 'library_scope':''})
+
         return True
 
     def serve_channel(self, handler, index, slot=0):
@@ -255,10 +335,24 @@ class TVPlugin:
 
     def resolve_channel(self, handler, index, slot):
         """Returns the endpoint for a channel, trying backup sets by slot."""
-        session = self.sessions.get(self.session_token(handler))
+        session = self.playback_session(handler)
         if not session or index < 0 or index >= len(session['channels']):
             self.send_json(handler, {'error': 'channel_not_loaded'}, 404)
             return None
+        if session.get('library_scope'):
+            cid = session['channels'][index]['id']
+            current = next((r for r in self.library.view(session['library_scope']) if r['id']==cid),None)
+            if not current or slot < 0 or slot >= len(current['lines']):
+                self.send_json(handler, {'error':'channel_or_line_inactive'},410)
+                return None
+            route = current['lines'][slot]
+            return {'url':route['url'],'headers':route['headers']}
+        if session.get('candidates'):
+            candidates = session['candidates'][index]
+            if slot < 0 or slot >= len(candidates):
+                self.send_json(handler, {'error':'channel_not_loaded'},404)
+                return None
+            return candidates[slot]['endpoint']
         chain = session.get('chain') or [session['source']]
         if slot < 0 or slot >= len(chain):
             self.send_json(handler, {'error': 'channel_not_loaded'}, 404)
@@ -272,10 +366,14 @@ class TVPlugin:
                 self.send_json(handler, {'error': 'backup_fetch_failed', 'detail': str(error)[:200]}, 502)
                 return None
             session['sets'][chain[slot]] = entries
-        if index >= len(entries):
-            self.send_json(handler, {'error': 'channel_not_loaded'}, 404)
+        if slot == 0:
+            return session['channels'][index]['endpoint']
+        target = session['channels'][index]['key']
+        match = next((entry for entry in entries if entry['key'] == target), None)
+        if match is None:
+            self.send_json(handler, {'error': 'channel_not_in_backup'}, 404)
             return None
-        return entries[index]['endpoint']
+        return match['endpoint']
 
     def serve_transcode(self, handler, index, slot=0):
         if not self.authorized(handler):
@@ -284,7 +382,8 @@ class TVPlugin:
         endpoint = self.resolve_channel(handler, index, slot)
         if endpoint is None:
             return True
-        key = '%d-%d' % (index, slot)
+        signature=endpoint['url']+json.dumps(endpoint['headers'],sort_keys=True)
+        key = str(int(hashlib.sha256(signature.encode()).hexdigest()[:16],16))+'-'+str(slot)
         try:
             entry = self.transcoders.start(key, endpoint['url'], endpoint['headers'])
         except OSError:

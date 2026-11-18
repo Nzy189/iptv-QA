@@ -15,12 +15,12 @@ from iptv_qa.reporting.history import render_html
 PUBLIC_FILES = {'/iptv_history.csv': ('iptv_history.csv', 'text/csv; charset=utf-8'),
                 '/iptv_history.json': ('iptv_history.json', 'application/json; charset=utf-8'),
                 '/api/history': ('iptv_history.json', 'application/json; charset=utf-8')}
-PLAYLISTS = ('iptv_ok.m3u', 'iptv_top3.m3u', 'iptv_set1.m3u', 'iptv_set2.m3u', 'iptv_set3.m3u', 'iptv_english.m3u', 'iptv_stable.m3u')
+PLAYLISTS = ('iptv_ok.m3u', 'iptv_top3.m3u', 'iptv_set1.m3u', 'iptv_set2.m3u', 'iptv_set3.m3u', 'iptv_set4.m3u', 'iptv_english.m3u', 'iptv_stable.m3u')
 STATUS_FIELDS = ('run_id', 'state', 'stage', 'completed', 'total', 'passed', 'updated_at', 'started_at',
                  'finished_at', 'channels_available', 'top3_entries', 'top5_entries', 'error_type')
 
 
-def make_handler(data_dir, public_base, tv_plugin=None, dashboard_enabled=True):
+def make_handler(data_dir, public_base, tv_plugin=None, dashboard_enabled=True, regions=None):
     data_dir = Path(data_dir)
 
     class Handler(BaseHTTPRequestHandler):
@@ -78,12 +78,12 @@ def make_handler(data_dir, public_base, tv_plugin=None, dashboard_enabled=True):
                         return self.json_body({'error': 'not_found'}, 404)
                 if path in ('/', '/iptv_summary.html'):
                     history = json.loads((data_dir / 'summaries/iptv_history.json').read_text(encoding='utf-8'))
-                    page = render_html(history['runs'], history['generated_at'])
+                    page = render_html(history['runs'], history['generated_at'], catalog_state=tv_plugin.library.summary() if tv_plugin is not None and tv_plugin.library is not None else None)
                     banner = '<section class="card" style="margin-top:18px"><b id="live-title">读取最新进度…</b><small id="live-detail">页面每 30 秒自动更新</small><div id="progress-wrap" hidden style="background:#e2e7ef;margin-top:10px;border-radius:5px;overflow:hidden"><div id="progress" style="height:6px;background:#155acc;width:0"></div></div></section>'
-                    if tv_plugin is not None:
+                    if tv_plugin is not None and tv_plugin.library is None:
                         banner = banner.replace('</section>',
                                                 '<div style="margin-top:10px"><a href="/tv/" style="color:#155acc;font-weight:600">网页电视</a>'
-                                                '<small style="color:#57606a"> · 换台播放已验证频道</small></div></section>', 1)
+                                                '<small style="color:#57606a"> · 按总表优先级自动尝试备用线路</small></div></section>', 1)
                     page = page.replace('<section class="cards">', banner + '<section class="cards">', 1)
                     initial = json.dumps(history['generated_at']).replace('<', '\\u003c')
                     script = '''<script>
@@ -97,7 +97,34 @@ refresh=async function(){await originalRefresh();try{const r=await fetch('/api/s
 refresh();setInterval(refresh,30000);
 </script>'''.replace('INITIAL', initial)
                     page = page.replace('</body>', script + '</body>')
+                    if regions:
+                        import html
+                        from iptv_qa.server.regions import render_regions
+                        local_label = html.escape(regions['local_name'])
+                        page = page.replace('<h1>频道中心</h1>', '<h1>{}检测结果</h1>'.format(local_label), 1)
+                        regional_content, regional_script = render_regions(regions)
+                        page = page.replace('</main>', regional_content + '</main>', 1)
+                        page = page.replace('</body>', regional_script + '</body>', 1)
                     return self.send_body(200, page.encode('utf-8'), 'text/html; charset=utf-8')
+                if path.startswith('/api/regions/') and regions:
+                    from iptv_qa.server.regions import fetch_json
+                    index = path[len('/api/regions/'):]
+                    if not index.isdigit() or int(index) >= len(regions['nodes']):
+                        return self.json_body({'error': 'not_found'}, 404)
+                    node = regions['nodes'][int(index)]
+                    result = {}
+                    try:
+                        result['status'] = fetch_json(node, '/api/status')
+                    except (OSError, ValueError, KeyError):
+                        result['status'] = {}
+                    if node['audit']:
+                        try:
+                            result['audit'] = fetch_json(node, '/api/guangzhou-audit')
+                        except (OSError, ValueError, KeyError):
+                            pass
+                    if not result['status'] and 'audit' not in result:
+                        return self.json_body({'error': 'region_unavailable'}, 503)
+                    return self.json_body(result)
                 if path == '/api/status':
                     raw = json.loads((data_dir / 'status.json').read_text(encoding='utf-8'))
                     history = json.loads((data_dir / 'summaries/iptv_history.json').read_text(encoding='utf-8'))
@@ -136,7 +163,9 @@ refresh();setInterval(refresh,30000);
                 if path.lstrip('/') in PLAYLISTS and path.count('/') == 1:
                     if not public_base:
                         name = path.lstrip('/')
-                        if name == 'iptv_english.m3u':
+                        if name == 'iptv_set4.m3u':
+                            target = data_dir / 'extras/iptv_set4.m3u'
+                        elif name == 'iptv_english.m3u':
                             target = data_dir / 'english/published/iptv_top3.m3u'
                         else:
                             target = data_dir / 'published' / ('iptv_top5.m3u' if name == 'iptv_ok.m3u' else name)
@@ -179,13 +208,14 @@ class Server(ThreadingMixIn, HTTPServer):
             self.slots.release()
 
 
-def create_player(password, public_base='', ffmpeg=None, transcode_limit=2, transcode_idle=90):
+def create_player(password, public_base='', ffmpeg=None, transcode_limit=2, transcode_idle=90, library=None):
     """Playback is optional; dashboard-only startup never imports the player."""
     from iptv_qa.playback.service import TVPlugin, assets_dir
-    playlists = (('set1', 'Set1', 'iptv_set1.m3u'), ('set2', 'Set2', 'iptv_set2.m3u'),
-                 ('set3', 'Set3', 'iptv_set3.m3u'), ('top3', 'Top3', 'iptv_top3.m3u'))
+    playlists = (('top5', '综合频道', 'iptv_ok.m3u'),
+                 ('set4', '今日补充', 'iptv_set4.m3u'),
+                 ('english', '英语频道', 'iptv_english.m3u'))
     return TVPlugin(password, assets_dir(), playlists, public_base, ffmpeg=ffmpeg,
-                    transcode_limit=transcode_limit, transcode_idle_seconds=transcode_idle)
+                    transcode_limit=transcode_limit, transcode_idle_seconds=transcode_idle, library=library)
 
 
 def main(argv=None, default_mode='all'):
@@ -196,6 +226,8 @@ def main(argv=None, default_mode='all'):
     parser.add_argument('--public-base', default='')
     parser.add_argument('--mode', choices=('all', 'dashboard', 'player'), default=default_mode,
                         help='Run both interfaces, reports only, or standalone playback')
+    parser.add_argument('--library-config', default=os.environ.get('IPTV_LIBRARY_CONFIG'), help='Enable managed channel library using private configuration')
+    parser.add_argument('--regions-config', default=os.environ.get('IPTV_REGIONS_CONFIG'), help='Optional multi-ECS dashboard configuration')
     parser.add_argument('--ffmpeg', default=None, help='Optional player transcoder binary')
     parser.add_argument('--transcode-limit', type=int, default=2)
     parser.add_argument('--transcode-idle', type=int, default=90, help='Stop idle transcodes after these seconds')
@@ -207,14 +239,25 @@ def main(argv=None, default_mode='all'):
     password = os.environ.get('IPTV_TV_PASSWORD', '')
     if args.mode == 'player' and not password:
         parser.error('Set IPTV_TV_PASSWORD to run the standalone player')
+    library = None
+    if args.library_config and password and args.mode != 'dashboard':
+        from iptv_qa.library.store import Library, configured_path
+        cfg = json.loads(Path(args.library_config).read_text(encoding='utf-8'))
+        path = configured_path(cfg)
+        if path is not None:
+            library = Library(path)
     if password and args.mode != 'dashboard':
         tv_plugin = create_player(password, args.public_base, args.ffmpeg,
-                                  args.transcode_limit, args.transcode_idle)
+                                  args.transcode_limit, args.transcode_idle, library=library)
         logging.info('Web TV player enabled at /tv/')
     elif args.mode == 'all':
         logging.warning('IPTV_TV_PASSWORD not set; web TV player disabled')
+    regions = None
+    if args.regions_config and args.mode != 'player':
+        from iptv_qa.server.regions import load_regions
+        regions = load_regions(args.regions_config)
     server = Server((args.host, args.port), make_handler(args.data_dir, args.public_base, tv_plugin,
-                                                       dashboard_enabled=args.mode != 'player'))
+                                                       dashboard_enabled=args.mode != 'player', regions=regions))
     logging.info('IPTV %s service listening on %s:%d', args.mode, args.host, args.port)
     try:
         server.serve_forever()

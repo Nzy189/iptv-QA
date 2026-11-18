@@ -59,11 +59,11 @@ HLS 分片较长时，观察窗口延长至至少两个分片周期加两秒。�
 | `decode_seconds` | 4 | 初筛视频时长 |
 | `deep_seconds` | 30 | 每次深检的最低观察及视频时长 |
 | `fast_startup_seconds` | 5 | 优先起播类别 |
-| `max_startup_seconds` | 12 | 等待首批视频帧上限 |
+| `max_startup_seconds` | 30 | 等待首批视频帧上限 |
 | `max_stall_seconds` | 8 | 估计缓冲耗尽后额外等待上限 |
 | `recheck_interval_seconds` | 1800 | 两次连接的最小间隔 |
 
-这些是项目经验值，不是 Apple 或 HLS 规定的统一阈值。
+这些是项目经验值，不是 Apple 或 HLS 规定的统一阈值。起播等待上限只用于区分能播与死流；预算之内起播快慢只影响排序优先级（`fast_startup_seconds`），不单独决定成败。
 
 ## 排序与资源
 
@@ -96,3 +96,7 @@ OBS 为独立可选模块：固定对象名维持订阅地址，失败重试，�
 ## 参考资料
 
 [HLS 标准](https://www.rfc-editor.org/rfc/rfc8216.html) · [Apple HLS 要求](https://developer.apple.com/streaming/hls-authoring-specification-for-apple-devices.html) · [FFmpeg](https://ffmpeg.org/ffmpeg.html) · [Apple 播放日志](https://developer.apple.com/documentation/avfoundation/avplayeritemaccesslogevent)
+
+## 受管发布
+
+启用总表后，仅完整合格QA结果更新自动可用资格，人工停用和清理标记保留。媒体观察与浏览器反馈分开保存，受管输出统一从一致的数据库快照派生，详见[总表设计](LIBRARY.zh-CN.md)。

@@ -12,6 +12,8 @@ The player shows one row per channel and tries up to five ranked lines. Main rea
 
 Destruction mode is opt-in and defaults off. A managed channel receives one 20-second startup budget across all lines. Exhausting the lines or budget quarantines the channel in the current view and queues publication. Actual playback, autoplay denial and manual/source switches cancel the startup timer. Login failure and offline state do not delete records. Quarantine is reversible from the management page; raw sources are not edited. A custom subscription cannot trigger managed deletion.
 
+Separately, the player's **报错清理** button lets a viewer report a line whose picture is not the channel's own content. The `report_line` action disables that single line (`disable_line`) with reason `content_mismatch`, leaving an audit entry and a browser observation, and queues asynchronous publication. When reports exhaust a channel's lines, a channel-level quarantine is added on top. Such manual disables are operator state, so QA runs never automatically restore them; recovery happens on the management page.
+
 ## Data model
 
 The library is one SQLite database. Identity, operator intent and machine observations live in separate tables and columns so that imports, QA runs and human edits never overwrite each other.

@@ -34,6 +34,17 @@ iptv-QA 将分散的 IPTV 来源汇总、去重、检测和排序，自动生成
 | **慢启动频道不再误杀** | 深检起播预算从 12 秒放宽到 30 秒：起播慢但播放稳定的频道得以保留；起播速度只影响排序，不再一票否决。 |
 | **统一频道总表** | 频道身份与线路分开管理、版本化发布、可恢复清理和加密备份，五线路播放一目了然。 |
 
+## 功能清单
+
+- 真实视频检测：解码画面、观察媒体推进、HLS 播放列表更新检查，以及间隔至少 30 分钟的新连接复验。
+- 去重与频道合并，按起播速度、当次表现和历史可靠性对线路排名。
+- 多套排名订阅：Top3、Top5、三套单线路、纯稳定清单和独立英语频道。
+- 浏览器放映：频道搜索、多线路竞速、备用自动回退和按需 H.264/AAC 转码。
+- 无人值守运行：定时任务、按主机并发控制、失败重试和发布保护。
+- 结果可见：仪表盘、CSV/JSON 历史导出，以及可选的华为 OBS 固定地址上传。
+
+**不包含：** 不保证不间断播放、不内置固定频道库、不做 EPG、不提供付费/DRM 源的访问。播放效果取决于上游、网络和接收设备，能力边界见[设计文档](docs/DESIGN.zh-CN.md#现有边界)。
+
 ## 为什么选择 iptv-QA？
 
 | 优势 | 带来的价值 |
@@ -101,31 +112,52 @@ iptv-QA 将分散的 IPTV 来源汇总、去重、检测和排序，自动生成
 
 ## 快速开始
 
-**检测环境要求：** Linux、Python 3、FFmpeg 和 ffprobe；参考媒体工具版本为 FFmpeg 7.x。
+**环境要求：** Linux、Python 3、FFmpeg 和 ffprobe；参考媒体工具版本为 FFmpeg 7.x。OBS 与云存储均为可选。
+
+### 检测自己的播放列表
+
+手里已有 M3U 订阅或文件？直接指向它，只检测这一份：
 
 ```bash
 git clone https://github.com/Nzy189/iptv-QA.git
 cd iptv-QA
-python3 scripts/configure.py --output config.local.json --data-dir ./data
-python3 -m iptv_qa run --config config.local.json
+python3 scripts/configure.py --output config.local.json --data-dir ./data --source /path/to/your.m3u
+python3 -m iptv_qa check --config config.local.json
 ```
 
-第一轮结束后，打开本地结果页面：
+- `--source` 接受 `http(s)` 地址或本地播放列表文件，可重复传入多个订阅。
+- `check` 跳过目录发现，只检测你配置的源。
+- 首轮结果约 30–60 分钟后产出：每个入围候选先持续观察至少 30 秒真实视频，再间隔至少 30 分钟用新连接复验。等待本身就是质量门槛，不是额外开销。
+
+检测结束后，查看本地结果：
 
 ```bash
 python3 -m iptv_qa dashboard --data-dir ./data --host 127.0.0.1 --port 8088
 ```
 
-访问 `http://127.0.0.1:8088/`。**OBS 默认关闭**，检测、文件输出和本地页面都能独立使用。接入自己的源、定时任务或云端上传，请查看[部署配置](docs/DEPLOYMENT.zh-CN.md)。
+访问 `http://127.0.0.1:8088/`。**OBS 默认关闭**，检测、文件输出和本地页面都能独立使用。
 
-只运行浏览器放映，无需先检测：
+### 运行完整流水线
+
+不传 `--source` 时，`run` 从默认公共目录（数万候选端点）开始，先发现再全量检测，最后发布排名订阅——上方示例订阅即由此产出。一轮耗时视源数量可达数小时：
+
+```bash
+python3 scripts/configure.py --output config.local.json --data-dir ./data
+python3 -m iptv_qa run --config config.local.json
+```
+
+定时任务与可选 OBS 上传见[部署配置](docs/DEPLOYMENT.zh-CN.md)。
+
+### 不检测，直接看
+
+浏览器放映不依赖检测结果，导入任意 M3U 即可观看：
 
 ```bash
 export IPTV_TV_PASSWORD='choose-a-private-password'
 python3 -m iptv_qa play --port 8089
 ```
 
-访问 `http://127.0.0.1:8089/tv/`，导入自己的 M3U。FFmpeg 仅在需要回退转码时使用。源码运行无需安装 Python 依赖；也可用 `python3 -m pip install .` 安装命令和完整网页资源。
+访问 `http://127.0.0.1:8089/tv/`。FFmpeg 仅在需要回退转码时使用。源码运行无需安装 Python 依赖；也可用 `python3 -m pip install .` 安装命令和完整网页资源。
 
 ## 使用文档
 

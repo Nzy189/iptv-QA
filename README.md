@@ -12,7 +12,7 @@
 [![Release](https://img.shields.io/github/v/release/Nzy189/iptv-QA)](https://github.com/Nzy189/iptv-QA/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[**Top3 playlist**](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_top3.m3u) · [**Full playlist · Top5**](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_ok.m3u) · [**Download iptv-QA**](https://github.com/Nzy189/iptv-QA/releases/latest)
+[**Channel subscription**](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_ok.m3u) · [**Download iptv-QA**](https://github.com/Nzy189/iptv-QA/releases/latest)
 
 [Quick start](#quick-start) · [Playlists](#playlists-and-downloads) · [Documentation](#documentation) · [Project progress](PROGRESS.md)
 
@@ -30,7 +30,7 @@ Optional [channel management](docs/LIBRARY.md) provides one persistent library, 
 
 | Improvement | What it means |
 | --- | --- |
-| **Hedged source racing** | Clicking a channel loads its top three lines at once and plays whichever shows a picture first — channel switching waits for the fastest line, not a lucky one. |
+| **Hedged source racing** | Clicking a channel loads all of its lines at once (up to five) and plays whichever shows a picture first — channel switching waits for the fastest line, not a lucky one. |
 | **No more slow-start false kills** | The deep startup budget rises from 12 to 30 seconds: slow-starting but stable channels are kept, and startup speed only affects ranking, never qualification. |
 | **Unified channel library** | Channel identity separate from stream lines, versioned publication, reversible quarantine and encrypted backups, with up-to-five-line playback. |
 
@@ -41,7 +41,7 @@ Optional [channel management](docs/LIBRARY.md) provides one persistent library, 
 | **Check real video** | Decode actual frames and inspect media progression, rather than accepting an address solely because it responds. |
 | **Switch channels faster** | Hedged racing loads several lines at once and keeps the first one to show a picture. |
 | **Make channel choice easier** | Merge duplicate channel names and rank sources by startup, recent test results and historical reliability. |
-| **Keep alternatives ready** | Top3, Top5 and three single-source sets give you a main route and practical backups. |
+| **Keep alternatives ready** | One channel catalog exports full, compact and single-source views, so the main route and backups are ready together. |
 | **Curate your own extras** | Optionally append an operator-curated group, such as international news, to Top3 and the three sets without re-testing it. |
 | **Keep television separate** | Filter explicit radio entries and audio-only TV candidates; put English channels in a separate subscription. |
 | **Automate the routine** | Run unattended with scheduling, per-host concurrency control, retry handling and publication guards. |
@@ -50,20 +50,21 @@ Optional [channel management](docs/LIBRARY.md) provides one persistent library, 
 
 ## Playlists and downloads
 
-### Example subscriptions
+### One catalog, several views
+
+Every playlist file is a different view of one channel catalog: the main subscription carries all ranked lines, and the other views simply keep fewer of them per scenario. The built-in player offers three entries — combined channels (the main view, up to five ranked lines per channel with automatic racing), today's supplement and English channels.
 
 Open a file below or copy its link into a player that supports M3U subscriptions.
 
-| Playlist | Best for | File |
-| --- | --- | --- |
-| **Top3** | A compact selection: up to three sources per channel | [iptv_top3.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_top3.m3u) |
-| **Full playlist · Top5** | The complete selected channel lineup, with up to five sources per channel | [iptv_ok.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_ok.m3u) |
-| **Set 1 · Main** | One first-choice source per channel | [iptv_set1.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_set1.m3u) |
-| **Set 2 / Set 3 · Backups** | Alternative single-source channel sets | [Set 2](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_set2.m3u) · [Set 3](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_set3.m3u) |
-| **English** | A separate English-language selection | [iptv_english.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_english.m3u) |
-| **Detection report** | Latest published statistics and history | [iptv_summary.html](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_summary.html) |
+| View | Lines per channel | Best for | File |
+| --- | --- | --- | --- |
+| **Main subscription** | Up to 5 | Everyday use: full backups and automatic line selection | [iptv_ok.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_ok.m3u) |
+| **Compact subscription** | Up to 3 | A shorter list for lightweight players | [iptv_top3.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_top3.m3u) |
+| **Single-source compatibility** | 1 | Older devices or players that accept one line per channel | [Set 1](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_set1.m3u) · [Set 2](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_set2.m3u) · [Set 3](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_set3.m3u) |
+| **English channels** | Up to 3 | A separate English-language selection | [iptv_english.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_english.m3u) |
+| **Detection report** | — | Latest published statistics and history | [iptv_summary.html](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_summary.html) |
 
-**Top3 and Top5 cover the same selected channels.** They differ in the number of sources retained per channel. The full playlist is the ranked Top5 output, not an untested raw-source dump. Sets reuse the last available source when a channel has too few backups.
+The views cover the same selected channels and differ only in how many lines each keeps; the single-source sets are compatibility exports for older receivers and match the main subscription's first choice. The main subscription is the catalog's full view, not an untested raw-source dump. Sets reuse the last available source when a channel has too few backups.
 
 These links serve the last published snapshot and may lag behind the current QA rules while a new run is in progress. Check the report for publication time and status. The source code does not bundle a fixed channel library; your deployment can use different sources and output addresses.
 

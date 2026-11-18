@@ -12,7 +12,7 @@
 [![Release](https://img.shields.io/github/v/release/Nzy189/iptv-QA)](https://github.com/Nzy189/iptv-QA/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[**Top3 精选订阅**](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_top3.m3u) · [**完整列表 · Top5**](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_ok.m3u) · [**下载 iptv-QA**](https://github.com/Nzy189/iptv-QA/releases/latest)
+[**频道订阅**](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_ok.m3u) · [**下载 iptv-QA**](https://github.com/Nzy189/iptv-QA/releases/latest)
 
 [快速开始](#快速开始) · [订阅与下载](#订阅与下载) · [使用文档](#使用文档) · [项目进度](PROGRESS.md)
 
@@ -30,7 +30,7 @@ iptv-QA 将分散的 IPTV 来源汇总、去重、检测和排序，自动生成
 
 | 改进 | 效果 |
 | --- | --- |
-| **多源竞速起播** | 点开频道时前三条线路同时加载，先出画面的一条立即播放，其余马上释放——换台等待从"碰运气"变成"取最快"。 |
+| **多源竞速起播** | 点开频道时全部线路（最多五条）同时加载，先出画面的一条立即播放，其余马上释放——换台等待从"碰运气"变成"取最快"。 |
 | **慢启动频道不再误杀** | 深检起播预算从 12 秒放宽到 30 秒：起播慢但播放稳定的频道得以保留；起播速度只影响排序，不再一票否决。 |
 | **统一频道总表** | 频道身份与线路分开管理、版本化发布、可恢复清理和加密备份，五线路播放一目了然。 |
 
@@ -41,7 +41,7 @@ iptv-QA 将分散的 IPTV 来源汇总、去重、检测和排序，自动生成
 | **真正检查视频** | 实际解码画面、观察视频推进，避免只凭地址能响应就判断可用。 |
 | **换台更快** | 多源竞速让多条线路同时起播、先出画面先用，无需逐条等待。 |
 | **频道更整齐，选择更简单** | 合并重复频道，结合起播、当次表现和历史可靠性优选线路。 |
-| **主用与备用一次备齐** | 同时生成 Top3、Top5 和三套单线路列表，方便日常使用与备用切换。 |
+| **主用与备用一次备齐** | 一张频道清单按需导出完整、精简和单线路视图，主用备用都齐。 |
 | **自带精选分组** | 可选附加运维者精选的分组（例如国际新闻）到 Top3 与三套，无需重新检测。 |
 | **电视与广播分开处理** | 过滤明确电台和纯音频电视候选，英语频道独立输出。 |
 | **自动完成日常维护** | 支持定时运行、按主机控制并发、失败重试和发布保护。 |
@@ -50,20 +50,21 @@ iptv-QA 将分散的 IPTV 来源汇总、去重、检测和排序，自动生成
 
 ## 订阅与下载
 
-### 示例订阅
+### 一张清单，多种视图
+
+所有订阅文件都是同一份频道清单的不同视图：主订阅带全部排名线路，其余视图只是按场景保留更少的线路。内置播放器提供三个入口——综合频道（主视图，每频道最多五条排名线路，自动竞速选线）、今日补充和英语频道。
 
 点击文件下载，或复制链接到支持 M3U 订阅的播放器。
 
-| 订阅 | 适合什么场景 | 文件入口 |
-| --- | --- | --- |
-| **Top3 精选版** | 每频道最多保留 3 条源，列表更精简 | [iptv_top3.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_top3.m3u) |
-| **完整列表 · Top5** | 覆盖全部入选频道，每频道最多保留 5 条源 | [iptv_ok.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_ok.m3u) |
-| **Set 1 主用版** | 每频道只出现一次，优先使用第 1 名 | [iptv_set1.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_set1.m3u) |
-| **Set 2 / Set 3 备用版** | 使用另一套单线路列表，方便整体切换 | [Set 2](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_set2.m3u) · [Set 3](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_set3.m3u) |
-| **英语精选版** | 英语频道单独使用 | [iptv_english.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_english.m3u) |
-| **检测报告** | 查看最近发布结果与历史记录 | [iptv_summary.html](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_summary.html) |
+| 视图 | 每频道线路 | 适合什么场景 | 文件入口 |
+| --- | --- | --- | --- |
+| **主订阅** | 最多 5 条 | 日常使用：备用线路齐全，播放器自动选线 | [iptv_ok.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_ok.m3u) |
+| **精简订阅** | 最多 3 条 | 列表更短，适合轻量播放器 | [iptv_top3.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_top3.m3u) |
+| **单线路兼容版** | 1 条 | 老设备或只认单线路的播放器 | [Set 1](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_set1.m3u) · [Set 2](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_set2.m3u) · [Set 3](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_set3.m3u) |
+| **英语频道** | 最多 3 条 | 英语频道单独使用 | [iptv_english.m3u](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_english.m3u) |
+| **检测报告** | — | 查看最近发布结果与历史记录 | [iptv_summary.html](https://temppa.obs.me-east-1.myhuaweicloud.com/iptv_summary.html) |
 
-**Top3 和 Top5 覆盖相同的入选频道，区别是每频道保留的线路数量。** 这里的完整列表指 Top5 输出，不是未经检测的原始候选大包。备用不足时，三套单线路订阅复用最后一条可用源。
+各视图覆盖同一批入选频道，区别只是每频道保留的线路数量；单线路版是给老设备的兼容导出，内容与主订阅的第一名一致。主订阅指频道清单的完整视图，不是未经检测的原始候选大包。备用不足时，单线路版复用最后一条可用源。
 
 这些链接提供最近一次已发布快照；新任务执行期间，文件可能落后于当前程序规则，请通过报告确认发布时间和状态。源码不附带固定频道库，自行部署时可使用自己的来源和输出地址。
 

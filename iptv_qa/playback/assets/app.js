@@ -820,6 +820,7 @@
   var diagEl = null;
   var lastKey = '-';
   var lastAction = '-';
+  var mediaActionState = {};
 
   function diagUpdate() {
     if (!diagOn) return;
@@ -829,21 +830,27 @@
       document.body.appendChild(diagEl);
       diagEl.textContent = 'media-keys diag';
     }
-    diagEl.textContent = 'media-keys diag\nbuild: mk-20261119b' +
+    diagEl.textContent = 'media-keys diag\nbuild: mk-20261119c' +
       '\nmediaSession: ' + (mediaSession ? 'yes' : 'no') +
       '\nMediaMetadata: ' + (typeof MediaMetadata !== 'undefined' ? 'yes' : 'no') +
+      '\nnexttrack: ' + (mediaActionState['nexttrack'] || '-') +
+      '\nprevioustrack: ' + (mediaActionState['previoustrack'] || '-') +
+      '\nplaybackState: ' + (mediaSession ? (mediaSession.playbackState || '-') : '-') +
       '\nlastKey: ' + lastKey +
       '\nlastAction: ' + lastAction;
   }
 
   function bindMediaAction(name, handler) {
-    if (!mediaSession) return;
+    if (!mediaSession) { mediaActionState[name] = 'no-session'; return; }
     try {
       mediaSession.setActionHandler(name, function (details) {
         lastAction = name; diagUpdate();
         handler(details);
       });
-    } catch (e) {}
+      mediaActionState[name] = 'ok';
+    } catch (e) {
+      mediaActionState[name] = 'rejected:' + (e && e.name ? e.name : 'err');
+    }
   }
 
   bindMediaAction('play', function () { video.play().catch(function () {}); });

@@ -491,6 +491,7 @@
     nowPlaying.textContent = (i + 1) + ' · ' + channel.name;
     channelBadge.textContent = (i + 1) + ' ' + channel.name;
     highlightChannel(i);
+    updateMediaMetadata();
     if (state.hls) { state.hls.destroy(); state.hls = null; }
     video.pause();
     video.removeAttribute('src');
@@ -515,8 +516,14 @@
     }
   }
 
-  function next() { var i=nextVisible(state.current);if(i>=0)play(i); }
-  function prev() { for(var j=1;j<=channelCount();j+=1){var i=(state.current-j+channelCount())%channelCount();if(!state.channels[i].removed)return play(i);} }
+  function next() {
+    if (state.order === 'random') { randomPlay(); return; }
+    var i=nextVisible(state.current);if(i>=0)play(i);
+  }
+  function prev() {
+    if (state.order === 'random') { randomPlay(); return; }
+    for(var j=1;j<=channelCount();j+=1){var i=(state.current-j+channelCount())%channelCount();if(!state.channels[i].removed)return play(i);}
+  }
 
   function randomPlay() {
     var available=[];
@@ -768,18 +775,55 @@
     if (state.current >= 0) play(state.current);
   });
   function bindVideoEvents(el) {
-    el.addEventListener('play', updatePlayBtn);
+    el.addEventListener('play', function () { updatePlayBtn(); updateMediaPlayback(); });
     el.addEventListener('playing', function () {
       clearDestruction();
       if (autoplayNotice) hideOverlay();
       maybePrefetch();
+      updateMediaPlayback();
     });
-    el.addEventListener('pause', updatePlayBtn);
+    el.addEventListener('pause', function () { updatePlayBtn(); updateMediaPlayback(); });
     el.addEventListener('progress', function () {
       if (el.buffered.length > 0 || el.readyState >= 2) clearWatchdog();
     });
   }
   bindVideoEvents(video);
+
+  // Bluetooth / OS media keys: map previous/next track to channel switching.
+  // The page never registered a Media Session before, so the OS showed the
+  // previous/next buttons greyed out. Registering handlers enables them.
+  var mediaSession = navigator.mediaSession || null;
+
+  function updateMediaMetadata() {
+    if (!mediaSession || typeof MediaMetadata === 'undefined') return;
+    var channel = state.current >= 0 ? state.channels[state.current] : null;
+    try {
+      mediaSession.metadata = channel ? new MediaMetadata({
+        title: channel.name,
+        artist: channel.group || '网页电视',
+        album: '网页电视'
+      }) : null;
+    } catch (e) {}
+  }
+
+  function updateMediaPlayback() {
+    if (!mediaSession) return;
+    try { mediaSession.playbackState = (state.current >= 0 && !video.paused) ? 'playing' : 'paused'; } catch (e) {}
+  }
+
+  function bindMediaAction(name, handler) {
+    if (!mediaSession) return;
+    try { mediaSession.setActionHandler(name, handler); } catch (e) {}
+  }
+
+  bindMediaAction('play', function () { video.play().catch(function () {}); });
+  bindMediaAction('pause', function () { video.pause(); });
+  bindMediaAction('stop', function () { video.pause(); });
+  bindMediaAction('previoustrack', prev);
+  bindMediaAction('nexttrack', next);
+  updateMediaMetadata();
+  updateMediaPlayback();
+
   document.addEventListener('keydown', onKey);
 
   setInterval(function () {

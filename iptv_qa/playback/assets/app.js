@@ -647,10 +647,13 @@
   function onKey(event) {
     var tag = event.target.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+    if (diagOn) { lastKey = event.key; diagUpdate(); }
     if (event.key >= '0' && event.key <= '9') { digitInput(event.key); return; }
     switch (event.key) {
       case 'ArrowUp': event.preventDefault(); prev(); break;
       case 'ArrowDown': event.preventDefault(); next(); break;
+      case 'MediaTrackNext': case 'MediaNextTrack': case 'TrackNext': event.preventDefault(); next(); break;
+      case 'MediaTrackPrevious': case 'MediaPreviousTrack': case 'TrackPrevious': event.preventDefault(); prev(); break;
       case 'r': case 'R': randomPlay(); break;
       case 'f': case 'F': toggleFullscreen(); break;
       case 'm': case 'M': toggleMute(); break;
@@ -811,9 +814,36 @@
     try { mediaSession.playbackState = (state.current >= 0 && !video.paused) ? 'playing' : 'paused'; } catch (e) {}
   }
 
+  // Optional on-screen diagnostic (?diag=1) for embedded / in-car browsers,
+  // where devtools are unavailable and we cannot see whether media keys arrive.
+  var diagOn = /[?&]diag=1(&|$)/.test(location.search);
+  var diagEl = null;
+  var lastKey = '-';
+  var lastAction = '-';
+
+  function diagUpdate() {
+    if (!diagOn) return;
+    if (!diagEl) {
+      diagEl = document.createElement('div');
+      diagEl.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:99999;background:rgba(0,0,0,.78);color:#7CFC00;font:12px/1.5 monospace;padding:6px 8px;border-radius:6px;white-space:pre;max-width:90vw;pointer-events:none';
+      document.body.appendChild(diagEl);
+      diagEl.textContent = 'media-keys diag';
+    }
+    diagEl.textContent = 'media-keys diag\nbuild: mk-20261119b' +
+      '\nmediaSession: ' + (mediaSession ? 'yes' : 'no') +
+      '\nMediaMetadata: ' + (typeof MediaMetadata !== 'undefined' ? 'yes' : 'no') +
+      '\nlastKey: ' + lastKey +
+      '\nlastAction: ' + lastAction;
+  }
+
   function bindMediaAction(name, handler) {
     if (!mediaSession) return;
-    try { mediaSession.setActionHandler(name, handler); } catch (e) {}
+    try {
+      mediaSession.setActionHandler(name, function (details) {
+        lastAction = name; diagUpdate();
+        handler(details);
+      });
+    } catch (e) {}
   }
 
   bindMediaAction('play', function () { video.play().catch(function () {}); });
@@ -823,6 +853,7 @@
   bindMediaAction('nexttrack', next);
   updateMediaMetadata();
   updateMediaPlayback();
+  diagUpdate();
 
   document.addEventListener('keydown', onKey);
 

@@ -492,6 +492,7 @@
     channelBadge.textContent = (i + 1) + ' ' + channel.name;
     highlightChannel(i);
     updateMediaMetadata();
+    registerMediaHandlers();
     if (state.hls) { state.hls.destroy(); state.hls = null; }
     video.pause();
     video.removeAttribute('src');
@@ -830,14 +831,15 @@
       document.body.appendChild(diagEl);
       diagEl.textContent = 'media-keys diag';
     }
-    diagEl.textContent = 'media-keys diag\nbuild: mk-20261119c' +
+    diagEl.textContent = 'media-keys diag\nbuild: mk-20261119d' +
       '\nmediaSession: ' + (mediaSession ? 'yes' : 'no') +
       '\nMediaMetadata: ' + (typeof MediaMetadata !== 'undefined' ? 'yes' : 'no') +
       '\nnexttrack: ' + (mediaActionState['nexttrack'] || '-') +
       '\nprevioustrack: ' + (mediaActionState['previoustrack'] || '-') +
       '\nplaybackState: ' + (mediaSession ? (mediaSession.playbackState || '-') : '-') +
       '\nlastKey: ' + lastKey +
-      '\nlastAction: ' + lastAction;
+      '\nlastAction: ' + lastAction +
+      (mediaSession ? '' : '\nhint: 该浏览器无 Media Session，请用页面底部按钮');
   }
 
   function bindMediaAction(name, handler) {
@@ -853,11 +855,18 @@
     }
   }
 
-  bindMediaAction('play', function () { video.play().catch(function () {}); });
-  bindMediaAction('pause', function () { video.pause(); });
-  bindMediaAction('stop', function () { video.pause(); });
-  bindMediaAction('previoustrack', prev);
-  bindMediaAction('nexttrack', next);
+  // Register every supported path independently: an unsupported action in one
+  // browser must not stop the others. Re-run on each channel switch because some
+  // embedded browsers reset their media session when playback restarts.
+  function registerMediaHandlers() {
+    bindMediaAction('play', function () { video.play().catch(function () {}); });
+    bindMediaAction('pause', function () { video.pause(); });
+    bindMediaAction('stop', function () { video.pause(); });
+    bindMediaAction('previoustrack', prev);
+    bindMediaAction('nexttrack', next);
+  }
+
+  registerMediaHandlers();
   updateMediaMetadata();
   updateMediaPlayback();
   diagUpdate();

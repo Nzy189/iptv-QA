@@ -98,7 +98,10 @@ class ByteCacheTests(unittest.TestCase):
                        fetch_func=make_fetch(store), max_bytes=max_bytes)
         return p
 
-    def test_full_caches_manifest_and_first_two_segments(self):
+    def test_full_caches_manifest_and_live_start_segments(self):
+        # three segments listed: a live player starts on the first of the
+        # last three, so all available ones are warmed (seg3 is missing
+        # upstream here and is simply skipped)
         p = self._pluginish()
         p.warm('main', 'c', LINES, wait=True)
         m = p.get_bytes('http://u/a.m3u8')

@@ -20,9 +20,12 @@ from .constants import (TV_COOKIE, STATIC_FILES, PLAYER_CSP, PLAY_PATH, STREAM_P
                         TSEG_PATH, SEGMENT_NAME, MAX_BODY_BYTES, MAX_PLAYLIST_BYTES,
                         MAX_SEGMENT_BYTES, TRANSCODE_START_TIMEOUT, BOM,
                         TV_PLAYLIST_PATH, TV_RACE_PATH, TV_RSTREAM_PATH, TV_RACE_VIEWS,
-                        TV_RACE_CACHE_SECONDS, TV_RACE_CACHE_LIMIT)
+                        TV_RACE_CACHE_SECONDS, TV_RACE_CACHE_LIMIT, RACE_BUDGET,
+                        RACE_BUDGET_ALL_FAILING)
 from .proxy import is_blocked_url, fetch_upstream, rewrite_playlist, NotHls
-from .prefetch import Prefetcher
+from .linestats import LineStats
+from .prefetch import Prefetcher, strip_probe
+from .race import race_lines
 from .state import Registry, Sessions
 from .transcoding import Transcoders
 
@@ -50,6 +53,12 @@ class TVPlugin:
         self.public_base = public_base
         self.tv_tokens = [part.strip() for part in
                           (os.environ.get('IPTV_TV_TOKENS') or '').split(',') if part.strip()]
+        self.line_stats = LineStats()
+        # The default race reports every probe outcome so later races,
+        # fallbacks and prewarms prefer lines that actually started fast.
+        self._default_race = race_func is None
+        if race_func is None:
+            race_func = self._race_default
         self.race_func = race_func
         self.race_cache = OrderedDict()
         self.race_lock = threading.Lock()
@@ -309,7 +318,8 @@ class TVPlugin:
         if not lines:
             self.send_json(handler, {'ok': True, 'warmed': False})
             return True
-        self.prefetcher.warm(session['library_scope'], nxt['id'], lines, mode=mode)
+        self.prefetcher.warm(session['library_scope'], nxt['id'], self.line_stats.order(lines),
+                             mode=mode)
         self.send_json(handler, {'ok': True, 'warmed': True})
         return True
 
@@ -451,7 +461,11 @@ class TVPlugin:
                         'application/vnd.apple.mpegurl')
         return True
 
+    def _race_default(self, lines, budget=RACE_BUDGET):
+        return race_lines(lines, budget=budget, observe=self.line_stats.record)
+
     def _race_winner(self, view, channel_id, lines):
+        """Winner for a channel; a fresh race's winner still carries its probe bytes."""
         prefetched = self.prefetcher.get(view, channel_id)
         if prefetched is not None:
             return prefetched
@@ -461,13 +475,21 @@ class TVPlugin:
             hit = self.race_cache.get(key)
             if hit and hit[0] > now:
                 return hit[1]
-        if self.race_func is None:
-            from iptv_qa.playback.race import race_lines
-            self.race_func = race_lines
-        winner = self.race_func(lines)
+        lines = self.line_stats.order(lines)
+        if len(lines) == 1:
+            # Nothing to race against: probing first only delays the start.
+            line = lines[0]
+            return {'index': line['slot'], 'url': line['url'], 'headers': line['headers'],
+                    'final_url': line['url']}
+        if self._default_race and self.line_stats.all_failing(lines):
+            # Every line failed repeatedly in the last minutes: answer fast
+            # instead of holding the TV app for the full race budget.
+            winner = self._race_default(lines, budget=RACE_BUDGET_ALL_FAILING)
+        else:
+            winner = self.race_func(lines)
         if winner is not None:
             with self.race_lock:
-                self.race_cache[key] = (now + TV_RACE_CACHE_SECONDS, winner)
+                self.race_cache[key] = (now + TV_RACE_CACHE_SECONDS, strip_probe(winner))
                 while len(self.race_cache) > TV_RACE_CACHE_LIMIT:
                     self.race_cache.popitem(last=False)
         return winner
@@ -484,7 +506,7 @@ class TVPlugin:
         nxt = rows[(ids.index(channel_id) + 1) % len(rows)]
         lines = [{'url': line['url'], 'headers': line['headers']} for line in nxt['lines']]
         if lines:
-            self.prefetcher.warm(view, nxt['id'], lines)
+            self.prefetcher.warm(view, nxt['id'], self.line_stats.order(lines))
 
     def serve_token_race(self, handler, view, channel_id):
         if not self.tv_tokens:
@@ -509,11 +531,16 @@ class TVPlugin:
             if not lines:
                 self.send_json(handler, {'error': 'channel_or_line_inactive'}, 404)
                 return True
-            winner = lines[0]
+            winner = self.line_stats.order(lines)[0]
+        elif winner.get('probe'):
+            # Serve the manifest the race already downloaded and start
+            # fetching the segments the player will ask for next.
+            self.prefetcher.adopt_race(winner)
         self._prefetch_next(view, channel_id, rows)
         # the template is %-formatted later, so a literal % in the token must be doubled
         template = '/tv/rstream/%d?token=' + quote(token, safe='').replace('%', '%%')
-        return self.serve_url(handler, winner['url'], winner['headers'], template)
+        return self.serve_url(handler, winner['url'], winner['headers'], template,
+                              warm_segments=True)
 
     def serve_token_stream(self, handler, rid):
         if not self.tv_tokens:
@@ -644,10 +671,11 @@ class TVPlugin:
         content_type = entry.get('content_type') or 'application/octet-stream'
         self.send_media(handler, entry['status'] if entry['status'] in (200, 206) else 200, data, content_type)
 
-    def serve_url(self, handler, url, headers, url_template=None, manifest=False):
+    def serve_url(self, handler, url, headers, url_template=None, manifest=False,
+                  warm_segments=False):
         range_header = handler.headers.get('Range')
         if not range_header:
-            cached = self.prefetcher.get_bytes(url)
+            cached = self.prefetcher.wait_bytes(url)
             if cached is not None:
                 self._send_cached(handler, cached, url_template, headers)
                 return True
@@ -664,6 +692,8 @@ class TVPlugin:
         if data[:3] == BOM:
             data = data[3:]
         if data.lstrip(b'\r\n \t')[:7] == b'#EXTM3U':
+            if warm_segments and 200 <= status < 300:
+                self.prefetcher.adopt_manifest(final_url, data, headers)
             text = rewrite_playlist(data.decode('utf-8', 'replace'), final_url, headers,
                                    self.registry.register, url_template)
             self.send_media(handler, 200, text.encode('utf-8'),

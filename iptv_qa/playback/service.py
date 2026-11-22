@@ -23,6 +23,7 @@ from .constants import (TV_COOKIE, STATIC_FILES, PLAYER_CSP, PLAY_PATH, STREAM_P
                         TV_RACE_CACHE_SECONDS, TV_RACE_CACHE_LIMIT, RACE_BUDGET,
                         RACE_BUDGET_ALL_FAILING)
 from .proxy import is_blocked_url, fetch_upstream, rewrite_playlist, NotHls
+from . import reqlog
 from .linestats import LineStats
 from .prefetch import Prefetcher, strip_probe
 from .race import race_lines
@@ -114,16 +115,24 @@ class TVPlugin:
         self.sessions.set_source(token+':'+session['source_id'],session)
 
     def send_media(self, handler, code, body, content_type, extra_headers=None):
-        handler.send_response(code)
-        handler.send_header('Content-Type', content_type)
-        handler.send_header('Content-Length', str(len(body)))
-        handler.send_header('Cache-Control', 'no-store')
-        handler.send_header('X-Content-Type-Options', 'nosniff')
-        for key, value in (extra_headers or {}).items():
-            handler.send_header(key, value)
-        handler.end_headers()
-        if handler.command != 'HEAD':
-            handler.wfile.write(body)
+        reqlog.note(st=code, b=len(body))
+        try:
+            handler.send_response(code)
+            handler.send_header('Content-Type', content_type)
+            handler.send_header('Content-Length', str(len(body)))
+            handler.send_header('Cache-Control', 'no-store')
+            handler.send_header('X-Content-Type-Options', 'nosniff')
+            for key, value in (extra_headers or {}).items():
+                handler.send_header(key, value)
+            handler.end_headers()
+            if handler.command != 'HEAD':
+                handler.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+            # The player gave up on this request (TV apps routinely cancel a
+            # duplicate or a superseded request). Record it instead of
+            # printing a traceback for every cancelled segment.
+            reqlog.note(abort=True)
+            handler.close_connection = True
 
     def send_json(self, handler, value, code=200, extra_headers=None):
         self.send_media(handler, code, json.dumps(value, ensure_ascii=False).encode('utf-8'),
@@ -141,8 +150,25 @@ class TVPlugin:
         except (OSError, ValueError):
             return None
 
+    LOGGED_PATHS = ((TV_RACE_PATH, 'race'), (TV_RSTREAM_PATH, 'rstream'), (TV_PLAYLIST_PATH, 'playlist'),
+                    (PLAY_PATH, 'play'), (STREAM_PATH, 'stream'))
+
     def handle_get(self, handler):
         path = unquote(urlsplit(handler.path).path)
+        kind = next((name for pattern, name in self.LOGGED_PATHS if pattern.match(path)), None)
+        if kind is None:
+            return self._handle_get(handler, path)
+        reqlog.begin(kind, ip=handler.client_address[0], m=handler.command,
+                     id=path.rsplit('/', 1)[-1][:40])
+        try:
+            return self._handle_get(handler, path)
+        except Exception as error:
+            reqlog.note(err=type(error).__name__)
+            raise
+        finally:
+            reqlog.end()
+
+    def _handle_get(self, handler, path):
         if path in ('/api/library/state','/api/library/status'):
             return self.handle_library(handler, False)
         if path in STATIC_FILES:
@@ -468,25 +494,32 @@ class TVPlugin:
         """Winner for a channel; a fresh race's winner still carries its probe bytes."""
         prefetched = self.prefetcher.get(view, channel_id)
         if prefetched is not None:
+            reqlog.note(pick='prewarm', slot=prefetched.get('index'))
             return prefetched
         key = (view, channel_id)
         now = time.time()
         with self.race_lock:
             hit = self.race_cache.get(key)
             if hit and hit[0] > now:
+                reqlog.note(pick='cache', slot=hit[1].get('index'))
                 return hit[1]
         lines = self.line_stats.order(lines)
         if len(lines) == 1:
             # Nothing to race against: probing first only delays the start.
             line = lines[0]
+            reqlog.note(pick='single', slot=line['slot'])
             return {'index': line['slot'], 'url': line['url'], 'headers': line['headers'],
                     'final_url': line['url']}
+        race_started = time.monotonic()
         if self._default_race and self.line_stats.all_failing(lines):
             # Every line failed repeatedly in the last minutes: answer fast
             # instead of holding the TV app for the full race budget.
             winner = self._race_default(lines, budget=RACE_BUDGET_ALL_FAILING)
         else:
             winner = self.race_func(lines)
+        reqlog.add_ms('race_ms', race_started)
+        reqlog.note(pick='race' if winner is not None else 'race_failed',
+                    slot=winner.get('index') if winner else None)
         if winner is not None:
             with self.race_lock:
                 self.race_cache[key] = (now + TV_RACE_CACHE_SECONDS, strip_probe(winner))
@@ -526,12 +559,14 @@ class TVPlugin:
             return True
         lines = [{'url': line['url'], 'headers': line['headers']}
                  for line in channel['lines']]
+        reqlog.note(view=view, ch=channel_id[:12], name=channel.get('name'), lines=len(lines))
         winner = self._race_winner(view, channel_id, lines)
         if winner is None:
             if not lines:
                 self.send_json(handler, {'error': 'channel_or_line_inactive'}, 404)
                 return True
             winner = self.line_stats.order(lines)[0]
+            reqlog.note(slot=winner.get('slot'), fallback=True)
         elif winner.get('probe'):
             # Serve the manifest the race already downloaded and start
             # fetching the segments the player will ask for next.
@@ -540,7 +575,8 @@ class TVPlugin:
         # the template is %-formatted later, so a literal % in the token must be doubled
         template = '/tv/rstream/%d?token=' + quote(token, safe='').replace('%', '%%')
         return self.serve_url(handler, winner['url'], winner['headers'], template,
-                              warm_segments=True)
+                              warm_segments=True,
+                              meta={'ch': channel_id[:12], 'name': channel.get('name')})
 
     def serve_token_stream(self, handler, rid):
         if not self.tv_tokens:
@@ -554,9 +590,12 @@ class TVPlugin:
         if pair is None:
             self.send_json(handler, {'error': 'unknown_stream'}, 404)
             return True
+        meta = self.registry.meta(rid)
+        reqlog.note(**meta)
         # the template is %-formatted later, so a literal % in the token must be doubled
         template = '/tv/rstream/%d?token=' + quote(token, safe='').replace('%', '%%')
-        return self.serve_url(handler, pair[0], pair[1], template)
+        child_meta = {k: meta[k] for k in ('ch', 'name') if k in meta} or None
+        return self.serve_url(handler, pair[0], pair[1], template, meta=child_meta)
 
     def serve_playlists(self, handler):
         links = []
@@ -658,13 +697,13 @@ class TVPlugin:
         self.send_media(handler, 200, path.read_bytes(), 'video/mp2t')
         return True
 
-    def _send_cached(self, handler, entry, url_template, headers):
+    def _send_cached(self, handler, entry, url_template, headers, meta=None):
         data = entry['data']
         if data[:3] == BOM:
             data = data[3:]
         if data.lstrip(b'\r\n \t')[:7] == b'#EXTM3U':
             text = rewrite_playlist(data.decode('utf-8', 'replace'), entry['final_url'], headers,
-                                    self.registry.register, url_template)
+                                    self.registry.register, url_template, meta)
             self.send_media(handler, 200, text.encode('utf-8'),
                             'application/vnd.apple.mpegurl; charset=utf-8')
             return
@@ -672,30 +711,40 @@ class TVPlugin:
         self.send_media(handler, entry['status'] if entry['status'] in (200, 206) else 200, data, content_type)
 
     def serve_url(self, handler, url, headers, url_template=None, manifest=False,
-                  warm_segments=False):
+                  warm_segments=False, meta=None):
         range_header = handler.headers.get('Range')
+        reqlog.note(host=urlsplit(url).netloc)
         if not range_header:
             cached = self.prefetcher.wait_bytes(url)
             if cached is not None:
-                self._send_cached(handler, cached, url_template, headers)
+                reqlog.note(cache='hit')
+                self._send_cached(handler, cached, url_template, headers, meta)
                 return True
+        reqlog.note(cache='miss')
+        upstream_started = time.monotonic()
         try:
             status, response_headers, data, final_url = fetch_upstream(
                 url, headers, MAX_PLAYLIST_BYTES if manifest else MAX_SEGMENT_BYTES,
                 range_header, require_playlist=manifest)
         except NotHls:
+            reqlog.add_ms('up_ms', upstream_started)
+            reqlog.note(err='not_hls')
             self.send_json(handler, {'error': 'not_hls'}, 415)
             return True
         except (URLError, OSError, ValueError, ssl.SSLError) as error:
+            reqlog.add_ms('up_ms', upstream_started)
+            reqlog.note(err=type(error).__name__, detail=str(error)[:80])
             self.send_json(handler, {'error': 'upstream_failed', 'detail': str(error)[:200]}, 502)
             return True
+        reqlog.add_ms('up_ms', upstream_started)
+        reqlog.note(up_st=status)
         if data[:3] == BOM:
             data = data[3:]
         if data.lstrip(b'\r\n \t')[:7] == b'#EXTM3U':
             if warm_segments and 200 <= status < 300:
                 self.prefetcher.adopt_manifest(final_url, data, headers)
             text = rewrite_playlist(data.decode('utf-8', 'replace'), final_url, headers,
-                                   self.registry.register, url_template)
+                                   self.registry.register, url_template, meta)
             self.send_media(handler, 200, text.encode('utf-8'),
                             'application/vnd.apple.mpegurl; charset=utf-8')
             return True

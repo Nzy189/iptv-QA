@@ -6,11 +6,15 @@ from collections import OrderedDict
 from urllib.parse import urljoin
 
 from .constants import BOM, MAX_PLAYLIST_BYTES, MAX_SEGMENT_BYTES
+from . import reqlog
 from .proxy import fetch_upstream
 
 TARGET_DURATION = re.compile(rb'#EXT-X-TARGETDURATION:\s*([0-9.]+)')
 WARM_SEGMENTS = 3          # a live player starts on the third-to-last segment
-INFLIGHT_WAIT = 10.0       # a request for a segment being warmed waits this long
+# A request for a segment being warmed waits at most this long, then
+# fetches it itself: a stuck background download must never hold the
+# viewer for longer than a short head start is worth.
+INFLIGHT_WAIT = 3.0
 
 
 class Prefetcher:
@@ -143,7 +147,11 @@ class Prefetcher:
         with self._lock:
             event = self._inflight.get(url)
         if event is not None:
-            event.wait(timeout)
+            started = time.monotonic()
+            done = event.wait(timeout)
+            reqlog.add_ms('wait_ms', started)
+            if not done:
+                reqlog.note(wait_timeout=True)
         return self.get_bytes(url, consume=True)
 
     def _manifest_ttl(self, data):
@@ -241,14 +249,18 @@ class Prefetcher:
             for url in urls:
                 if url not in events or self._stopped.is_set():
                     continue
+                started = time.monotonic()
                 try:
                     status, hdrs, seg, seg_final = self._fetch(url, headers, MAX_SEGMENT_BYTES)
                     if 200 <= status < 300:
                         self._store_bytes(url, status,
                                           hdrs.get('Content-Type') or 'application/octet-stream',
                                           seg, seg_final)
-                except Exception:
-                    pass
+                    reqlog.warm(host=_host(url), st=status, b=len(seg),
+                                ms=int((time.monotonic() - started) * 1000))
+                except Exception as error:
+                    reqlog.warm(host=_host(url), err=type(error).__name__,
+                                ms=int((time.monotonic() - started) * 1000))
                 finally:
                     with self._lock:
                         if self._inflight.get(url) is events[url]:
@@ -319,3 +331,8 @@ def strip_probe(winner):
     if winner is None or 'probe' not in winner:
         return winner
     return {key: value for key, value in winner.items() if key != 'probe'}
+
+
+def _host(url):
+    from urllib.parse import urlsplit
+    return urlsplit(url).netloc

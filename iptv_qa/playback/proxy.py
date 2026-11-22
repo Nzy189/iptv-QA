@@ -71,18 +71,38 @@ def fetch_upstream(url, headers, max_bytes, range_header=None, require_playlist=
             raise ValueError('upstream object too large')
         return handle.getcode(), handle.headers, data, handle.geturl()
 
-def rewrite_playlist(text, base_url, headers, register, url_template=None):
+def rewrite_playlist(text, base_url, headers, register, url_template=None, meta=None):
+    """Rewrite child URIs to local ids; ``meta`` (e.g. the channel) is attached
+    to every registered child, plus ``dur`` for media segments, so later
+    segment requests can be logged against their channel and play length."""
     if url_template is None:
         url_template = '/tv/stream/%d'
+
+    def reg(url, dur=None):
+        if meta is None:
+            return register(url, headers)
+        info = dict(meta)
+        if dur is not None:
+            info['dur'] = dur
+        return register(url, headers, info)
+
     lines = []
+    duration = None
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
             lines.append(raw)
         elif line.startswith('#'):
+            if line.startswith('#EXTINF:'):
+                try:
+                    duration = float(line[8:].split(',')[0])
+                except ValueError:
+                    duration = None
+
             def sub(match):
-                return 'URI="%s"' % (url_template % register(urljoin(base_url, match.group(1)), headers))
+                return 'URI="%s"' % (url_template % reg(urljoin(base_url, match.group(1))))
             lines.append(URI_ATTR.sub(sub, raw))
         else:
-            lines.append(url_template % register(urljoin(base_url, line), headers))
+            lines.append(url_template % reg(urljoin(base_url, line), duration))
+            duration = None
     return '\n'.join(lines) + '\n'

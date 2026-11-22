@@ -749,6 +749,22 @@ class TokenRaceTests(unittest.TestCase):
             client.request('GET', '/tv/rstream/%s?token=wrong' % children[0])[0], 401)
         self.assertEqual(client.request('GET', '/tv/rstream/99999?token=tok-alpha')[0], 404)
 
+    def test_race_and_segment_requests_are_logged_with_channel(self):
+        self.clear_race_cache()
+        client = self.client()
+        with self.assertLogs('iptv.tv', 'INFO') as cm:
+            status, _, data = client.request('GET', self.channel_path() + '?token=tok-alpha')
+            child = re.findall(r'/tv/rstream/(\d+)\?token=tok-alpha', data.decode('utf-8'))[0]
+            _, _, media = client.request('GET', '/tv/rstream/%s?token=tok-alpha' % child)
+            seg = re.findall(r'#EXTINF[^\n]*\n/tv/rstream/(\d+)\?token=tok-alpha', media.decode('utf-8'))[0]
+            client.request('GET', '/tv/rstream/%s?token=tok-alpha' % seg)
+        recs = [json.loads(line.split('TVREQ ', 1)[1]) for line in cm.output if 'TVREQ ' in line]
+        race = [r for r in recs if r['kind'] == 'race'][0]
+        self.assertEqual((race['st'], race['ch'], race['pick']), (200, self.channel['id'][:12], 'race'))
+        segment = [r for r in recs if r['kind'] == 'rstream' and 'dur' in r][0]
+        self.assertEqual((segment['ch'], segment['dur']), (self.channel['id'][:12], 6.0))
+        self.assertNotIn('tok-alpha', ' '.join(cm.output))
+
     def test_race_falls_back_to_line_zero_when_no_winner(self):
         self.clear_race_cache()
         self.race_state['fail'] = True

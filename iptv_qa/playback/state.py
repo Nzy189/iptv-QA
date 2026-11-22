@@ -11,6 +11,7 @@ class Registry:
         self.lock = threading.Lock()
         self.by_rid = OrderedDict()
         self.by_url = {}
+        self.meta_by_rid = {}
         self.counter = 0
         self.limit = limit
 
@@ -18,21 +19,30 @@ class Registry:
     def _key(url, headers):
         return (url, json.dumps(headers, sort_keys=True))
 
-    def register(self, url, headers):
+    def register(self, url, headers, meta=None):
         key = self._key(url, headers)
         with self.lock:
             rid = self.by_url.get(key)
             if rid is not None:
                 self.by_rid.move_to_end(rid)
+                if meta:
+                    self.meta_by_rid[rid] = dict(meta)
                 return rid
             self.counter += 1
             rid = self.counter
             self.by_rid[rid] = (url, dict(headers))
             self.by_url[key] = rid
+            if meta:
+                self.meta_by_rid[rid] = dict(meta)
             while len(self.by_rid) > self.limit:
-                _, (old_url, old_headers) = self.by_rid.popitem(last=False)
+                old_rid, (old_url, old_headers) = self.by_rid.popitem(last=False)
                 self.by_url.pop(self._key(old_url, old_headers), None)
+                self.meta_by_rid.pop(old_rid, None)
             return rid
+
+    def meta(self, rid):
+        with self.lock:
+            return dict(self.meta_by_rid.get(rid) or {})
 
     def resolve(self, rid):
         with self.lock:
